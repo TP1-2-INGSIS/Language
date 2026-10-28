@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
+echo "Auto-formateando código con ktlint..."
+./gradlew ktlintFormat --daemon
+
+git update-index --again
+
 echo "Running pre-commit: ktlint check..."
 ./gradlew ktlintCheck --daemon
 
