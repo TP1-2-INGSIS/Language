@@ -2,6 +2,7 @@ plugins {
     kotlin("jvm") version "2.4.10"
     kotlin("plugin.allopen") version "2.4.10"
     id("io.quarkus")
+    id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
 }
 
 repositories {
@@ -14,7 +15,7 @@ val quarkusPlatformArtifactId: String = providers.gradleProperty("quarkusPlatfor
 val quarkusPlatformVersion: String = providers.gradleProperty("quarkusPlatformVersion").get()
 
 dependencies {
-    implementation(enforcedPlatform("${quarkusPlatformGroupId}:${quarkusPlatformArtifactId}:${quarkusPlatformVersion}"))
+    implementation(enforcedPlatform("$quarkusPlatformGroupId:$quarkusPlatformArtifactId:$quarkusPlatformVersion"))
     implementation("io.quarkus:quarkus-kotlin")
     implementation("io.quarkus:quarkus-rest-jackson")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
@@ -43,5 +44,25 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
         javaParameters = true
+        allWarningsAsErrors = true
     }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().configureEach {
+    compilerOptions {
+        allWarningsAsErrors.set(true)
+    }
+}
+
+ktlint {
+    version.set("1.5.0")
+    android.set(false)
+    outputToConsole.set(true)
+    ignoreFailures.set(false)
+}
+
+tasks.register<Exec>("installGitHooks") {
+    description = "Configures git to use .githooks directory"
+    group = "git hooks"
+    commandLine("git", "config", "core.hooksPath", ".githooks")
 }

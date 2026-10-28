@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -e
+
+echo "Running pre-push: full check (ktlint + tests)..."
+./gradlew check --daemon
+
+echo "Pre-push passed! All tests and lint checks OK."

@@ -78,6 +78,18 @@ src/main/kotlin/ingsis/language/
 # Ejecutar tests automatizados
 ./gradlew test
 
+# Verificar formato y estilo (Ktlint)
+./gradlew ktlintCheck
+
+# Auto-formatear código automáticamente (Ktlint)
+./gradlew ktlintFormat
+
+# Chequeo completo (ktlint + tests - lo mismo que corre en CI)
+./gradlew check
+
+# Configurar Git hooks (.githooks/)
+./gradlew installGitHooks
+
 # Compilar empaquetado para producción (Fast-JAR)
 ./gradlew build
 ```

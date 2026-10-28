@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -e
+
+echo "Running pre-commit: ktlint check..."
+./gradlew ktlintCheck --daemon
+
+echo "Pre-commit passed!"
