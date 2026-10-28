@@ -1,4 +1,4 @@
-package com.resources
+package ingsis.languages.resources
 
 import io.quarkus.test.junit.QuarkusTest
 import io.restassured.RestAssured.given
