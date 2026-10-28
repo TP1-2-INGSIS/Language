@@ -1,67 +1,83 @@
-# language
+# Language Service
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+Microservicio computacional para el análisis, ejecución, formateo y testing de snippets de código para múltiples lenguajes (ej: PrintScript, Python, etc.).
 
-If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
+Construido sobre **Quarkus 3**, **Kotlin** y **Gradle Kotlin DSL**.
 
-## Running the application in dev mode
+---
 
-You can run your application in dev mode that enables live coding using:
+## 1. Arquitectura y Filosofía de Diseño
 
-```shell script
-./gradlew quarkusDev
+El servicio sigue una arquitectura limpia de 3 capas con estricto desacoplamiento entre el framework web y los motores de ejecución:
+
+```mermaid
+flowchart TD
+    Client["Cliente / Snippets Service"] -->|HTTP / JSON| Resource["Resource Layer (JAX-RS / Quarkus REST)"]
+    Resource -->|DTOs inmutables| Service["Service Layer (Casos de uso / Orquestación)"]
+    Service -->|Registry| Engine["LanguageEngine (Patrón Strategy)"]
+    Service -.->|Test Runner| TestService["TestingService (Orquesta Execution + Asserts)"]
+    Engine --> PrintScript["PrintScript Engine (Pure Kotlin)"]
+    Engine --> OtherLangs["Otros Motores (Python, etc.)"]
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+### Principios Clave:
+* **Inversión de Dependencias (DIP) y Aislamiento:** Los motores de lenguaje son **Kotlin puro**, sin anotaciones ni dependencias de Quarkus. Esto permite correr pruebas unitarias en milisegundos sin levantar el contexto del framework.
+* **Segregación de Interfaces (ISP):** Cada lenguaje implementa solo las capacidades que soporta (`validate`, `format`, `execute`).
+* **Testing como Orquestación (SRP):** El motor no contiene lógica de testing. `TestingService` corre la ejecución con una lista de inputs y evalúa si la salida coincide con el resultado esperado (`expectedOutputs`).
+* **Seguridad en Ejecución:** Las ejecuciones cuentan con **timeouts estrictos** y corren fuera del Event Loop reactivo (`@Blocking` / workers dedicados) para prevenir bloqueos por bucles infinitos (`while(true)`).
 
-## Packaging and running the application
+---
 
-The application can be packaged using:
+## 2. Estructura de Paquetes (`ingsis.language`)
 
-```shell script
+```text
+src/main/kotlin/ingsis/language/
+│
+├── resource/                  # Capa HTTP (Jakarta REST / Quarkus REST)
+│   ├── LanguageResource.kt    # GET /languages (metadatos y versiones soportadas)
+│   ├── ExecutionResource.kt   # POST /languages/execute y POST /languages/test
+│   ├── FormattingResource.kt  # POST /languages/format
+│   ├── ValidationResource.kt  # POST /languages/validate
+│   └── dto/                   # Request / Response DTOs inmutables (Jackson)
+│
+├── service/                   # Casos de uso y orquestación
+│   ├── ExecutionService.kt    # Orquesta ejecución con timeout y captura de salidas
+│   ├── TestingService.kt      # Evalúa casos de prueba sobre ExecutionService
+│   ├── FormattingService.kt   # Aplica reglas de formato
+│   └── LanguageRegistry.kt    # Selector/Factory de implementaciones de LanguageEngine
+│
+└── domain/                    # Capa de Dominio (Kotlin puro)
+    ├── engine/
+    │   └── LanguageEngine.kt  # Contrato base de capacidades
+    └── model/
+        ├── TestCase.kt        # Modelo de caso de prueba (inputs, expectedOutputs)
+        ├── ExecutionReport.kt # Salidas capturadas, status y tiempo
+        └── ValidationReport.kt# Diagnósticos de sintaxis y linting
+```
+
+---
+
+## 3. Endpoints Principales
+
+| Método | Endpoint | Descripción |
+| :--- | :--- | :--- |
+| `GET` | `/languages` | Lista los lenguajes y versiones soportadas |
+| `POST` | `/languages/validate` | Chequeo sintáctico y semántico (diagnósticos/warnings) |
+| `POST` | `/languages/format` | Formatea código según reglas de estilo |
+| `POST` | `/languages/execute` | Ejecuta el código con una lista de inputs y devuelve salidas |
+| `POST` | `/languages/test` | Ejecuta casos de prueba y reporta resultados (`PASSED`, `FAILED`, `DIFF`) |
+
+---
+
+## 4. Desarrollo y Comandos Útiles
+
+```bash
+# Modo desarrollo con recarga en vivo (Live Reload)
+./gradlew quarkusDev
+
+# Ejecutar tests automatizados
+./gradlew test
+
+# Compilar empaquetado para producción (Fast-JAR)
 ./gradlew build
 ```
-
-It produces the `quarkus-run.jar` file in the `build/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `build/quarkus-app/lib/` directory.
-
-The application is now runnable using `java -jar build/quarkus-app/quarkus-run.jar`.
-
-If you want to build an _über-jar_, execute the following command:
-
-```shell script
-./gradlew build -Dquarkus.package.jar.type=uber-jar
-```
-
-The application, packaged as an _über-jar_, is now runnable using `java -jar build/*-runner.jar`.
-
-## Creating a native executable
-
-You can create a native executable using:
-
-```shell script
-./gradlew build -Dquarkus.native.enabled=true
-```
-
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
-
-```shell script
-./gradlew build -Dquarkus.native.enabled=true -Dquarkus.native.container-build=true
-```
-
-You can then execute your native executable with: `./build/language-1.0.0-SNAPSHOT-runner`
-
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/gradle-tooling>.
-
-## Related Guides
-
-- Kotlin ([guide](https://quarkus.io/guides/kotlin)): Write your services in Kotlin
-- REST Jackson ([guide](https://quarkus.io/guides/rest#json-serialisation)): Jackson serialization support for Quarkus REST. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it
-
-## Provided Code
-
-### REST
-
-Easily start your REST Web Services
-
-[Related guide section...](https://quarkus.io/guides/getting-started-reactive#reactive-jax-rs-resources)

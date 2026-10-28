@@ -1,6 +1,6 @@
-package org.acme
+package com.resources
 
 import io.quarkus.test.junit.QuarkusIntegrationTest
 
 @QuarkusIntegrationTest
-class GreetingResourceIT : GreetingResourceTest()
+class LanguageIT : LanguageTest()
