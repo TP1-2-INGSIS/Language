@@ -1,5 +1,6 @@
 package ingsis.language.services
 
+import ingsis.language.domain.model.ExecutionReport
 import ingsis.language.domain.model.LanguageResult
 import ingsis.language.domain.model.Languages
 import ingsis.language.domain.model.ValidationReport
@@ -39,4 +40,14 @@ class LanguageService(
         m_registry
             .getLinter(language, version)
             .flatMap { linter -> linter.lint(content, version, rules) }
+
+    fun execute(
+        language: String,
+        version: String,
+        content: String,
+        inputs: List<String>,
+    ): LanguageResult<ExecutionReport> =
+        m_registry
+            .getExecutor(language, version)
+            .flatMap { executor -> executor.execute(content, version, inputs) }
 }

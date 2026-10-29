@@ -1,10 +1,12 @@
 package ingsis.language.services
 
+import ingsis.language.domain.engine.CodeExecutor
 import ingsis.language.domain.engine.CodeFormatter
 import ingsis.language.domain.engine.CodeLinter
 import ingsis.language.domain.engine.CodeValidator
 import ingsis.language.domain.engine.LanguageEngine
 import ingsis.language.domain.model.DomainError
+import ingsis.language.domain.model.ExecutionReport
 import ingsis.language.domain.model.LanguageResult
 import ingsis.language.domain.model.ValidationReport
 import jakarta.enterprise.inject.Instance
@@ -31,7 +33,8 @@ class LanguageRegistryTest {
     ) : LanguageEngine,
         CodeValidator,
         CodeFormatter,
-        CodeLinter {
+        CodeLinter,
+        CodeExecutor {
         override fun validate(
             code: String,
             version: String,
@@ -48,6 +51,12 @@ class LanguageRegistryTest {
             version: String,
             config: String,
         ): LanguageResult<ValidationReport> = LanguageResult.Success(ValidationReport(isValid = true))
+
+        override fun execute(
+            code: String,
+            version: String,
+            inputs: List<String>,
+        ): LanguageResult<ExecutionReport> = LanguageResult.Success(ExecutionReport(outputs = listOf("test output")))
     }
 
     private class FakeEmptyEngine(
@@ -163,5 +172,22 @@ class LanguageRegistryTest {
         assertFalse(result.isSuccess)
         assertTrue(result.errorOrNull() is DomainError.CapabilityNotSupported)
         assertEquals("El lenguaje other-lang no soporta lint", result.errorOrNull()?.message)
+    }
+
+    @Test
+    fun `getExecutor returns executor when engine implements CodeExecutor`() {
+        val result = registry.getExecutor("dummy-lang", "1.0")
+
+        assertTrue(result.isSuccess)
+        assertEquals("dummy-lang", (result.getOrNull() as LanguageEngine).name)
+    }
+
+    @Test
+    fun `getExecutor fails when engine does not implement CodeExecutor`() {
+        val result = registry.getExecutor("other-lang", "2.0")
+
+        assertFalse(result.isSuccess)
+        assertTrue(result.errorOrNull() is DomainError.CapabilityNotSupported)
+        assertEquals("El lenguaje other-lang no soporta execute", result.errorOrNull()?.message)
     }
 }

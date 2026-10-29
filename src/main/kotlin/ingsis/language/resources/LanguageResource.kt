@@ -2,6 +2,8 @@ package ingsis.language.resources
 
 import com.fasterxml.jackson.databind.JsonNode
 import ingsis.language.resources.dtos.ErrorResponse
+import ingsis.language.resources.dtos.ExecuteRequest
+import ingsis.language.resources.dtos.ExecutionResponse
 import ingsis.language.resources.dtos.FormatRequest
 import ingsis.language.resources.dtos.FormatResponse
 import ingsis.language.resources.dtos.LanguageResponse
@@ -67,6 +69,20 @@ class LanguageResource(
         return m_service
             .lint(lang, request!!.version, request.content, request.rules.toRulesString())
             .toResponse(::LintResponse)
+    }
+
+    @POST
+    @Path("/{lang}/execute")
+    @Consumes(MediaType.APPLICATION_JSON)
+    fun execute(
+        @PathParam("lang") lang: String,
+        request: ExecuteRequest?,
+    ): Response {
+        validateRequest(request?.version)?.let { return it }
+
+        return m_service
+            .execute(lang, request!!.version, request.content, request.inputs)
+            .toResponse(::ExecutionResponse)
     }
 
     private fun validateRequest(version: String?): Response? =

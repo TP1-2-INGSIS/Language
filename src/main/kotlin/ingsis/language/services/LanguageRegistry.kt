@@ -1,5 +1,6 @@
 package ingsis.language.services
 
+import ingsis.language.domain.engine.CodeExecutor
 import ingsis.language.domain.engine.CodeFormatter
 import ingsis.language.domain.engine.CodeLinter
 import ingsis.language.domain.engine.CodeValidator
@@ -65,5 +66,16 @@ class LanguageRegistry(
                 engine as? CodeLinter
                     ?: return@flatMap LanguageResult.Failure(DomainError.CapabilityNotSupported(name, "lint"))
             LanguageResult.Success(linter)
+        }
+
+    fun getExecutor(
+        name: String,
+        version: String,
+    ): LanguageResult<CodeExecutor> =
+        getEngine(name, version).flatMap { engine ->
+            val executor =
+                engine as? CodeExecutor
+                    ?: return@flatMap LanguageResult.Failure(DomainError.CapabilityNotSupported(name, "execute"))
+            LanguageResult.Success(executor)
         }
 }

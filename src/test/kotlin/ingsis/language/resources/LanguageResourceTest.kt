@@ -1,14 +1,17 @@
 package ingsis.language.resources
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import ingsis.language.domain.engine.CodeExecutor
 import ingsis.language.domain.engine.CodeFormatter
 import ingsis.language.domain.engine.CodeLinter
 import ingsis.language.domain.engine.CodeValidator
 import ingsis.language.domain.model.Diagnostic
 import ingsis.language.domain.model.DomainError
+import ingsis.language.domain.model.ExecutionReport
 import ingsis.language.domain.model.Language
 import ingsis.language.domain.model.LanguageResult
 import ingsis.language.domain.model.ValidationReport
+import ingsis.language.resources.dtos.ExecuteRequest
 import ingsis.language.resources.dtos.FormatRequest
 import ingsis.language.resources.dtos.LintRequest
 import ingsis.language.resources.dtos.ValidateRequest
@@ -296,5 +299,111 @@ class LanguageResourceTest {
             .statusCode(400)
             .contentType(ContentType.JSON)
             .body("error", `is`("BAD_REQUEST"))
+    }
+
+    @Test
+    fun `execute returns 200 with outputs and null error`() {
+        val executor = Mockito.mock(CodeExecutor::class.java)
+        val report = ExecutionReport(outputs = listOf("Ana"), error = null)
+
+        Mockito
+            .`when`(executor.execute("println(\"Ana\");", "1.1", listOf("Ana")))
+            .thenReturn(LanguageResult.Success(report))
+        Mockito
+            .`when`(registry.getExecutor("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(executor))
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(ExecuteRequest(content = "println(\"Ana\");", version = "1.1", inputs = listOf("Ana")))
+            .`when`()
+            .post("/languages/printscript/execute")
+            .then()
+            .statusCode(200)
+            .contentType(ContentType.JSON)
+            .body("outputs.size()", `is`(1))
+            .body("outputs[0]", `is`("Ana"))
+            .body("error", org.hamcrest.CoreMatchers.nullValue())
+    }
+
+    @Test
+    fun `execute returns 200 with runtime error in body`() {
+        val executor = Mockito.mock(CodeExecutor::class.java)
+        val diagnostic =
+            Diagnostic(
+                rule = "INPUTS_EXHAUSTED",
+                message = "Input requested but none left",
+                line = 1,
+                column = 17,
+            )
+        val report = ExecutionReport(outputs = emptyList(), error = diagnostic)
+
+        Mockito
+            .`when`(executor.execute("readInput();", "1.1", emptyList()))
+            .thenReturn(LanguageResult.Success(report))
+        Mockito
+            .`when`(registry.getExecutor("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(executor))
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(ExecuteRequest(content = "readInput();", version = "1.1"))
+            .`when`()
+            .post("/languages/printscript/execute")
+            .then()
+            .statusCode(200)
+            .contentType(ContentType.JSON)
+            .body("outputs.size()", `is`(0))
+            .body("error.rule", `is`("INPUTS_EXHAUSTED"))
+            .body("error.message", `is`("Input requested but none left"))
+            .body("error.line", `is`(1))
+            .body("error.column", `is`(17))
+    }
+
+    @Test
+    fun `execute returns 400 when version is blank`() {
+        given()
+            .contentType(ContentType.JSON)
+            .body(ExecuteRequest(content = "let a = 1;", version = ""))
+            .`when`()
+            .post("/languages/printscript/execute")
+            .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .body("error", `is`("BAD_REQUEST"))
+    }
+
+    @Test
+    fun `execute returns 404 when language is not found`() {
+        Mockito
+            .`when`(registry.getExecutor("unknown", "1.1"))
+            .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(ExecuteRequest(content = "let a = 1;", version = "1.1"))
+            .`when`()
+            .post("/languages/unknown/execute")
+            .then()
+            .statusCode(404)
+            .contentType(ContentType.JSON)
+            .body("error", `is`("LANGUAGE_NOT_FOUND"))
+    }
+
+    @Test
+    fun `execute returns 501 when capability not supported`() {
+        Mockito
+            .`when`(registry.getExecutor("printscript", "1.1"))
+            .thenReturn(LanguageResult.Failure(DomainError.CapabilityNotSupported("printscript", "execute")))
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(ExecuteRequest(content = "let a = 1;", version = "1.1"))
+            .`when`()
+            .post("/languages/printscript/execute")
+            .then()
+            .statusCode(501)
+            .contentType(ContentType.JSON)
+            .body("error", `is`("CAPABILITY_NOT_SUPPORTED"))
     }
 }
