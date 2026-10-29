@@ -57,4 +57,25 @@ class LanguageResultTest {
         val invalidSource = DomainError.InvalidSource("syntax error").toResponse()
         assertEquals(422, invalidSource.status)
     }
+
+    @Test
+    fun `toResponse on success builds HTTP 200 with transformed body`() {
+        val success = LanguageResult.Success("hello")
+        val response = success.toResponse { it.uppercase() }
+
+        assertEquals(200, response.status)
+        assertEquals("HELLO", response.entity)
+
+        val directResponse = success.toResponse()
+        assertEquals(200, directResponse.status)
+        assertEquals("hello", directResponse.entity)
+    }
+
+    @Test
+    fun `toResponse on failure delegates to error response`() {
+        val failure: LanguageResult<String> = LanguageResult.Failure(DomainError.LanguageNotFound("missing"))
+        val response = failure.toResponse { it.uppercase() }
+
+        assertEquals(404, response.status)
+    }
 }

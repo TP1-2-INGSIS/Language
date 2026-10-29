@@ -21,8 +21,10 @@ fun DomainError.toResponse(): Response {
         .build()
 }
 
-fun <T> LanguageResult<T>.toResponse(onSuccess: (T) -> Response): Response =
+fun <T, R> LanguageResult<T>.toResponse(transform: (T) -> R): Response =
     when (this) {
-        is LanguageResult.Success -> onSuccess(value)
+        is LanguageResult.Success -> Response.ok(transform(value)).build()
         is LanguageResult.Failure -> error.toResponse()
     }
+
+fun <T> LanguageResult<T>.toResponse(): Response = toResponse { it }

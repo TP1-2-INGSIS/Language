@@ -1,6 +1,5 @@
 package ingsis.language.resources
 
-import ingsis.language.resources.dtos.DiagnosticResponse
 import ingsis.language.resources.dtos.ErrorResponse
 import ingsis.language.resources.dtos.LanguageResponse
 import ingsis.language.resources.dtos.ValidateRequest
@@ -21,10 +20,7 @@ class LanguageResource(
     private val m_service: LanguageService,
 ) {
     @GET
-    fun language(): Response =
-        m_service.getAllLanguages().toResponse { languages ->
-            Response.ok(LanguageResponse(languages)).build()
-        }
+    fun language(): Response = m_service.getAllLanguages().toResponse(::LanguageResponse)
 
     @POST
     @Path("/{lang}/validate")
@@ -40,22 +36,8 @@ class LanguageResource(
                 .build()
         }
 
-        return m_service.validate(lang, request.version, request.content).toResponse { report ->
-            Response
-                .ok(
-                    ValidateResponse(
-                        valid = report.isValid,
-                        errors =
-                            report.diagnostics.map {
-                                DiagnosticResponse(
-                                    rule = it.rule,
-                                    message = it.message,
-                                    line = it.line,
-                                    column = it.column,
-                                )
-                            },
-                    ),
-                ).build()
-        }
+        return m_service
+            .validate(lang, request.version, request.content)
+            .toResponse(::ValidateResponse)
     }
 }
