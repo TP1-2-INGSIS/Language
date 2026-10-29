@@ -1,7 +1,10 @@
 package ingsis.language.services
 
+import ingsis.language.domain.engine.CodeValidator
 import ingsis.language.domain.engine.LanguageEngine
+import ingsis.language.domain.model.DomainError
 import ingsis.language.domain.model.Language
+import ingsis.language.domain.model.LanguageResult
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.enterprise.inject.Instance
 
@@ -17,15 +20,26 @@ class LanguageRegistry(
     fun getEngine(
         name: String,
         version: String,
-    ): Result<LanguageEngine> {
+    ): LanguageResult<LanguageEngine> {
         val engine =
             m_engines.firstOrNull { it.name.equals(name, ignoreCase = true) }
-                ?: return Result.failure(IllegalArgumentException("Lenguaje no soportado: $name"))
+                ?: return LanguageResult.Failure(DomainError.LanguageNotFound(name))
 
         if (version !in engine.versions) {
-            return Result.failure(IllegalArgumentException("Versión no soportada: $version para $name"))
+            return LanguageResult.Failure(DomainError.UnsupportedVersion(name, version))
         }
 
-        return Result.success(engine)
+        return LanguageResult.Success(engine)
     }
+
+    fun getValidator(
+        name: String,
+        version: String,
+    ): LanguageResult<CodeValidator> =
+        getEngine(name, version).flatMap { engine ->
+            val validator =
+                engine as? CodeValidator
+                    ?: return@flatMap LanguageResult.Failure(DomainError.CapabilityNotSupported(name, "validate"))
+            LanguageResult.Success(validator)
+        }
 }
