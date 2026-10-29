@@ -1,8 +1,8 @@
 package ingsis.language.domain.model
 
-// No lo se todavia, porque que es un lenguaje
 data class Language(
     val name: String,
+    val versions: List<String> = emptyList(),
 )
 
 typealias Languages = List<Language>

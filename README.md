@@ -78,6 +78,12 @@ src/main/kotlin/ingsis/language/
 # Ejecutar tests automatizados
 ./gradlew test
 
+# Generar reporte de cobertura de código (JaCoCo)
+./gradlew jacocoTestReport
+
+# Verificar regla de cobertura mínima (0.8 / 80%)
+./gradlew jacocoTestCoverageVerification
+
 # Verificar formato y estilo (Ktlint)
 ./gradlew ktlintCheck
 

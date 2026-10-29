@@ -3,6 +3,7 @@ plugins {
     kotlin("plugin.allopen") version "2.4.10"
     id("io.quarkus")
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
+    jacoco
 }
 
 repositories {
@@ -22,6 +23,8 @@ dependencies {
     implementation("io.quarkus:quarkus-arc")
     implementation("io.quarkus:quarkus-rest")
     testImplementation("io.quarkus:quarkus-junit")
+    testImplementation("io.quarkus:quarkus-junit5-mockito")
+    testImplementation("io.quarkus:quarkus-jacoco")
     testImplementation("io.rest-assured:rest-assured")
 }
 
@@ -65,4 +68,38 @@ tasks.register<Exec>("installGitHooks") {
     description = "Configures git to use .githooks directory"
     group = "git hooks"
     commandLine("git", "config", "core.hooksPath", ".githooks")
+}
+
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+tasks.withType<Test> {
+    finalizedBy(tasks.jacocoTestReport)
+    configure<JacocoTaskExtension> {
+        excludeClassLoaders = listOf("*QuarkusClassLoader")
+    }
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}
+
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.jacocoTestReport)
+    violationRules {
+        rule {
+            limit {
+                minimum = "0.8".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification)
 }
