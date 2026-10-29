@@ -14,6 +14,7 @@ import ingsis.language.domain.model.ValidationReport
 import ingsis.language.resources.dtos.ExecuteRequest
 import ingsis.language.resources.dtos.FormatRequest
 import ingsis.language.resources.dtos.LintRequest
+import ingsis.language.resources.dtos.TestRequest
 import ingsis.language.resources.dtos.ValidateRequest
 import ingsis.language.services.LanguageRegistry
 import io.quarkus.test.InjectMock
@@ -405,5 +406,132 @@ class LanguageResourceTest {
             .statusCode(501)
             .contentType(ContentType.JSON)
             .body("error", `is`("CAPABILITY_NOT_SUPPORTED"))
+    }
+
+    @Test
+    fun `test returns 200 with passed true when actual outputs match expected outputs`() {
+        val executor = Mockito.mock(CodeExecutor::class.java)
+        Mockito
+            .`when`(executor.execute("println(\"Hola Ana\");", "1.1", emptyList()))
+            .thenReturn(LanguageResult.Success(ExecutionReport(outputs = listOf("Hola Ana"))))
+        Mockito
+            .`when`(registry.getExecutor("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(executor))
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(
+                TestRequest(
+                    content = "println(\"Hola Ana\");",
+                    version = "1.1",
+                    inputs = emptyList(),
+                    expectedOutputs = listOf("Hola Ana"),
+                ),
+            ).`when`()
+            .post("/languages/printscript/test")
+            .then()
+            .statusCode(200)
+            .contentType(ContentType.JSON)
+            .body("passed", `is`(true))
+            .body("expectedOutputs[0]", `is`("Hola Ana"))
+            .body("actualOutputs[0]", `is`("Hola Ana"))
+    }
+
+    @Test
+    fun `test returns 200 with passed false when actual outputs do not match expected outputs`() {
+        val executor = Mockito.mock(CodeExecutor::class.java)
+        Mockito
+            .`when`(executor.execute("println(\"Hola  Ana\");", "1.1", emptyList()))
+            .thenReturn(LanguageResult.Success(ExecutionReport(outputs = listOf("Hola  Ana"))))
+        Mockito
+            .`when`(registry.getExecutor("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(executor))
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(
+                TestRequest(
+                    content = "println(\"Hola  Ana\");",
+                    version = "1.1",
+                    inputs = emptyList(),
+                    expectedOutputs = listOf("Hola Ana"),
+                ),
+            ).`when`()
+            .post("/languages/printscript/test")
+            .then()
+            .statusCode(200)
+            .contentType(ContentType.JSON)
+            .body("passed", `is`(false))
+            .body("expectedOutputs[0]", `is`("Hola Ana"))
+            .body("actualOutputs[0]", `is`("Hola  Ana"))
+    }
+
+    @Test
+    fun `test returns 200 with passed false and error diagnostic when execution encounters an error`() {
+        val executor = Mockito.mock(CodeExecutor::class.java)
+        val diagnostic =
+            Diagnostic(
+                rule = "INPUTS_EXHAUSTED",
+                message = "Input requested but none left",
+                line = 1,
+                column = 17,
+            )
+        Mockito
+            .`when`(executor.execute("readInput();", "1.1", emptyList()))
+            .thenReturn(LanguageResult.Success(ExecutionReport(outputs = emptyList(), error = diagnostic)))
+        Mockito
+            .`when`(registry.getExecutor("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(executor))
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(
+                TestRequest(
+                    content = "readInput();",
+                    version = "1.1",
+                    inputs = emptyList(),
+                    expectedOutputs = listOf("Hola"),
+                ),
+            ).`when`()
+            .post("/languages/printscript/test")
+            .then()
+            .statusCode(200)
+            .contentType(ContentType.JSON)
+            .body("passed", `is`(false))
+            .body("actualOutputs.size()", `is`(0))
+            .body("error.rule", `is`("INPUTS_EXHAUSTED"))
+            .body("error.message", `is`("Input requested but none left"))
+            .body("error.line", `is`(1))
+            .body("error.column", `is`(17))
+    }
+
+    @Test
+    fun `test returns 400 when version is blank`() {
+        given()
+            .contentType(ContentType.JSON)
+            .body(TestRequest(content = "let a = 1;", version = ""))
+            .`when`()
+            .post("/languages/printscript/test")
+            .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .body("error", `is`("BAD_REQUEST"))
+    }
+
+    @Test
+    fun `test returns 404 when language is not found`() {
+        Mockito
+            .`when`(registry.getExecutor("unknown", "1.1"))
+            .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(TestRequest(content = "let a = 1;", version = "1.1"))
+            .`when`()
+            .post("/languages/unknown/test")
+            .then()
+            .statusCode(404)
+            .contentType(ContentType.JSON)
+            .body("error", `is`("LANGUAGE_NOT_FOUND"))
     }
 }

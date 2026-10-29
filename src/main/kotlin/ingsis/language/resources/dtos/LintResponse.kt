@@ -6,14 +6,6 @@ data class LintResponse(
     val violations: List<DiagnosticResponse> = emptyList(),
 ) {
     constructor(report: ValidationReport) : this(
-        violations =
-            report.diagnostics.map {
-                DiagnosticResponse(
-                    rule = it.rule,
-                    message = it.message,
-                    line = it.line,
-                    column = it.column,
-                )
-            },
+        violations = report.diagnostics.map(::DiagnosticResponse),
     )
 }

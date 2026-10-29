@@ -11,6 +11,8 @@ import ingsis.language.domain.model.Language
 import ingsis.language.domain.model.LanguageResult
 import ingsis.language.domain.model.ValidationReport
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -152,6 +154,85 @@ class LanguageServiceTest {
             .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
 
         val result = service.execute("unknown", "1.0", "println(\"Ana\");", emptyList())
+
+        assertTrue(result.isFailure)
+        assertTrue(result.errorOrNull() is DomainError.LanguageNotFound)
+    }
+
+    @Test
+    fun `test returns passed = true when execution succeeds and outputs match expectedOutputs`() {
+        val executor = Mockito.mock(CodeExecutor::class.java)
+        val executionReport = ExecutionReport(outputs = listOf("Hola Ana"))
+
+        Mockito
+            .`when`(registry.getExecutor("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(executor))
+        Mockito
+            .`when`(executor.execute("println(\"Hola \" + n);", "1.1", listOf("Ana")))
+            .thenReturn(LanguageResult.Success(executionReport))
+
+        val result = service.test("printscript", "1.1", "println(\"Hola \" + n);", listOf("Ana"), listOf("Hola Ana"))
+
+        assertTrue(result.isSuccess)
+        val report = result.getOrNull()!!
+        assertTrue(report.passed)
+        assertEquals(listOf("Hola Ana"), report.expectedOutputs)
+        assertEquals(listOf("Hola Ana"), report.actualOutputs)
+        assertNull(report.error)
+    }
+
+    @Test
+    fun `test returns passed = false when execution succeeds but outputs do not match expectedOutputs`() {
+        val executor = Mockito.mock(CodeExecutor::class.java)
+        val executionReport = ExecutionReport(outputs = listOf("Hola  Ana"))
+
+        Mockito
+            .`when`(registry.getExecutor("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(executor))
+        Mockito
+            .`when`(executor.execute("println(\"Hola \" + n);", "1.1", listOf("Ana")))
+            .thenReturn(LanguageResult.Success(executionReport))
+
+        val result = service.test("printscript", "1.1", "println(\"Hola \" + n);", listOf("Ana"), listOf("Hola Ana"))
+
+        assertTrue(result.isSuccess)
+        val report = result.getOrNull()!!
+        assertFalse(report.passed)
+        assertEquals(listOf("Hola Ana"), report.expectedOutputs)
+        assertEquals(listOf("Hola  Ana"), report.actualOutputs)
+        assertNull(report.error)
+    }
+
+    @Test
+    fun `test returns passed = false when execution has error`() {
+        val executor = Mockito.mock(CodeExecutor::class.java)
+        val diagnostic = Diagnostic("INPUTS_EXHAUSTED", "Input requested but none left", 1, 17)
+        val executionReport = ExecutionReport(outputs = emptyList(), error = diagnostic)
+
+        Mockito
+            .`when`(registry.getExecutor("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(executor))
+        Mockito
+            .`when`(executor.execute("readInput();", "1.1", emptyList()))
+            .thenReturn(LanguageResult.Success(executionReport))
+
+        val result = service.test("printscript", "1.1", "readInput();", emptyList(), listOf("Ana"))
+
+        assertTrue(result.isSuccess)
+        val report = result.getOrNull()!!
+        assertFalse(report.passed)
+        assertEquals(listOf("Ana"), report.expectedOutputs)
+        assertEquals(emptyList<String>(), report.actualOutputs)
+        assertEquals(diagnostic, report.error)
+    }
+
+    @Test
+    fun `test fails when registry returns failure`() {
+        Mockito
+            .`when`(registry.getExecutor("unknown", "1.0"))
+            .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
+
+        val result = service.test("unknown", "1.0", "readInput();", emptyList(), listOf("Ana"))
 
         assertTrue(result.isFailure)
         assertTrue(result.errorOrNull() is DomainError.LanguageNotFound)

@@ -3,6 +3,7 @@ package ingsis.language.services
 import ingsis.language.domain.model.ExecutionReport
 import ingsis.language.domain.model.LanguageResult
 import ingsis.language.domain.model.Languages
+import ingsis.language.domain.model.TestReport
 import ingsis.language.domain.model.ValidationReport
 import jakarta.enterprise.context.ApplicationScoped
 
@@ -50,4 +51,21 @@ class LanguageService(
         m_registry
             .getExecutor(language, version)
             .flatMap { executor -> executor.execute(content, version, inputs) }
+
+    fun test(
+        language: String,
+        version: String,
+        content: String,
+        inputs: List<String>,
+        expectedOutputs: List<String>,
+    ): LanguageResult<TestReport> =
+        execute(language, version, content, inputs).map { report ->
+            val passed = report.error == null && report.outputs == expectedOutputs
+            TestReport(
+                passed = passed,
+                expectedOutputs = expectedOutputs,
+                actualOutputs = report.outputs,
+                error = report.error,
+            )
+        }
 }

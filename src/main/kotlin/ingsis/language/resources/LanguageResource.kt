@@ -9,6 +9,8 @@ import ingsis.language.resources.dtos.FormatResponse
 import ingsis.language.resources.dtos.LanguageResponse
 import ingsis.language.resources.dtos.LintRequest
 import ingsis.language.resources.dtos.LintResponse
+import ingsis.language.resources.dtos.TestRequest
+import ingsis.language.resources.dtos.TestResponse
 import ingsis.language.resources.dtos.ValidateRequest
 import ingsis.language.resources.dtos.ValidateResponse
 import ingsis.language.services.LanguageService
@@ -83,6 +85,20 @@ class LanguageResource(
         return m_service
             .execute(lang, request!!.version, request.content, request.inputs)
             .toResponse(::ExecutionResponse)
+    }
+
+    @POST
+    @Path("/{lang}/test")
+    @Consumes(MediaType.APPLICATION_JSON)
+    fun test(
+        @PathParam("lang") lang: String,
+        request: TestRequest?,
+    ): Response {
+        validateRequest(request?.version)?.let { return it }
+
+        return m_service
+            .test(lang, request!!.version, request.content, request.inputs, request.expectedOutputs)
+            .toResponse(::TestResponse)
     }
 
     private fun validateRequest(version: String?): Response? =

@@ -8,14 +8,6 @@ data class ExecutionResponse(
 ) {
     constructor(report: ExecutionReport) : this(
         outputs = report.outputs,
-        error =
-            report.error?.let {
-                DiagnosticResponse(
-                    rule = it.rule,
-                    message = it.message,
-                    line = it.line,
-                    column = it.column,
-                )
-            },
+        error = report.error?.let(::DiagnosticResponse),
     )
 }
