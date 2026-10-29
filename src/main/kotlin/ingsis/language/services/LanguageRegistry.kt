@@ -1,5 +1,7 @@
 package ingsis.language.services
 
+import ingsis.language.domain.engine.CodeFormatter
+import ingsis.language.domain.engine.CodeLinter
 import ingsis.language.domain.engine.CodeValidator
 import ingsis.language.domain.engine.LanguageEngine
 import ingsis.language.domain.model.DomainError
@@ -41,5 +43,27 @@ class LanguageRegistry(
                 engine as? CodeValidator
                     ?: return@flatMap LanguageResult.Failure(DomainError.CapabilityNotSupported(name, "validate"))
             LanguageResult.Success(validator)
+        }
+
+    fun getFormatter(
+        name: String,
+        version: String,
+    ): LanguageResult<CodeFormatter> =
+        getEngine(name, version).flatMap { engine ->
+            val formatter =
+                engine as? CodeFormatter
+                    ?: return@flatMap LanguageResult.Failure(DomainError.CapabilityNotSupported(name, "format"))
+            LanguageResult.Success(formatter)
+        }
+
+    fun getLinter(
+        name: String,
+        version: String,
+    ): LanguageResult<CodeLinter> =
+        getEngine(name, version).flatMap { engine ->
+            val linter =
+                engine as? CodeLinter
+                    ?: return@flatMap LanguageResult.Failure(DomainError.CapabilityNotSupported(name, "lint"))
+            LanguageResult.Success(linter)
         }
 }

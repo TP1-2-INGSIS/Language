@@ -19,4 +19,24 @@ class LanguageService(
         m_registry
             .getValidator(language, version)
             .flatMap { validator -> validator.validate(content, version) }
+
+    fun format(
+        language: String,
+        version: String,
+        content: String,
+        rules: String,
+    ): LanguageResult<String> =
+        m_registry
+            .getFormatter(language, version)
+            .flatMap { formatter -> formatter.format(content, version, rules) }
+
+    fun lint(
+        language: String,
+        version: String,
+        content: String,
+        rules: String,
+    ): LanguageResult<ValidationReport> =
+        m_registry
+            .getLinter(language, version)
+            .flatMap { linter -> linter.lint(content, version, rules) }
 }

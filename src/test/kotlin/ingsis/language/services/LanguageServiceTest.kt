@@ -1,5 +1,7 @@
 package ingsis.language.services
 
+import ingsis.language.domain.engine.CodeFormatter
+import ingsis.language.domain.engine.CodeLinter
 import ingsis.language.domain.engine.CodeValidator
 import ingsis.language.domain.model.Diagnostic
 import ingsis.language.domain.model.DomainError
@@ -55,6 +57,69 @@ class LanguageServiceTest {
             .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
 
         val result = service.validate("unknown", "1.0", "let a = 1")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.errorOrNull() is DomainError.LanguageNotFound)
+    }
+
+    @Test
+    fun `format delegates to formatter and returns formatted string`() {
+        val formatter = Mockito.mock(CodeFormatter::class.java)
+
+        Mockito
+            .`when`(registry.getFormatter("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(formatter))
+        Mockito
+            .`when`(formatter.format("let a=1;", "1.1", "{}"))
+            .thenReturn(LanguageResult.Success("let a = 1;\n"))
+
+        val result = service.format("printscript", "1.1", "let a=1;", "{}")
+
+        assertTrue(result.isSuccess)
+        assertEquals("let a = 1;\n", result.getOrNull())
+    }
+
+    @Test
+    fun `format fails when registry returns failure`() {
+        Mockito
+            .`when`(registry.getFormatter("unknown", "1.0"))
+            .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
+
+        val result = service.format("unknown", "1.0", "let a=1;", "{}")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.errorOrNull() is DomainError.LanguageNotFound)
+    }
+
+    @Test
+    fun `lint delegates to linter and returns validation report`() {
+        val linter = Mockito.mock(CodeLinter::class.java)
+        val expectedReport =
+            ValidationReport(
+                isValid = false,
+                diagnostics = listOf(Diagnostic("CASE_RULE", "Not camelCase", 1, 5)),
+            )
+
+        Mockito
+            .`when`(registry.getLinter("printscript", "1.1"))
+            .thenReturn(LanguageResult.Success(linter))
+        Mockito
+            .`when`(linter.lint("let my_var = 1;", "1.1", "{}"))
+            .thenReturn(LanguageResult.Success(expectedReport))
+
+        val result = service.lint("printscript", "1.1", "let my_var = 1;", "{}")
+
+        assertTrue(result.isSuccess)
+        assertEquals(expectedReport, result.getOrNull())
+    }
+
+    @Test
+    fun `lint fails when registry returns failure`() {
+        Mockito
+            .`when`(registry.getLinter("unknown", "1.0"))
+            .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
+
+        val result = service.lint("unknown", "1.0", "let my_var = 1;", "{}")
 
         assertTrue(result.isFailure)
         assertTrue(result.errorOrNull() is DomainError.LanguageNotFound)
