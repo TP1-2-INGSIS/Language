@@ -78,6 +78,11 @@ tasks.withType<Test> {
     finalizedBy(tasks.jacocoTestReport)
     configure<JacocoTaskExtension> {
         excludeClassLoaders = listOf("*QuarkusClassLoader")
+        destinationFile =
+            layout.buildDirectory
+                .file("jacoco-quarkus.exec")
+                .get()
+                .asFile
     }
 }
 
