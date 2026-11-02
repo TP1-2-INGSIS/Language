@@ -10,6 +10,8 @@ import jakarta.enterprise.context.ApplicationScoped
 @ApplicationScoped
 class LanguageService(
     private val m_registry: LanguageRegistry,
+    private val m_executionService: ExecutionService,
+    private val m_testingService: TestingService,
 ) {
     fun getAllLanguages(): LanguageResult<Languages> = LanguageResult.Success(m_registry.getAllLanguages())
 
@@ -47,10 +49,7 @@ class LanguageService(
         version: String,
         content: String,
         inputs: List<String>,
-    ): LanguageResult<ExecutionReport> =
-        m_registry
-            .getExecutor(language, version)
-            .flatMap { executor -> executor.execute(content, version, inputs) }
+    ): LanguageResult<ExecutionReport> = m_executionService.execute(language, version, content, inputs)
 
     fun test(
         language: String,
@@ -58,14 +57,5 @@ class LanguageService(
         content: String,
         inputs: List<String>,
         expectedOutputs: List<String>,
-    ): LanguageResult<TestReport> =
-        execute(language, version, content, inputs).map { report ->
-            val passed = report.error == null && report.outputs == expectedOutputs
-            TestReport(
-                passed = passed,
-                expectedOutputs = expectedOutputs,
-                actualOutputs = report.outputs,
-                error = report.error,
-            )
-        }
+    ): LanguageResult<TestReport> = m_testingService.test(language, version, content, inputs, expectedOutputs)
 }
