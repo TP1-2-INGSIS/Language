@@ -22,6 +22,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("io.quarkus:quarkus-arc")
     implementation("io.quarkus:quarkus-rest")
+    implementation("io.quarkus:quarkus-redis-client")
     testImplementation("io.quarkus:quarkus-junit")
     testImplementation("io.quarkus:quarkus-junit5-mockito")
     testImplementation("io.quarkus:quarkus-jacoco")
