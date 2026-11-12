@@ -14,12 +14,12 @@ COPY src src
 RUN ./gradlew build -x test -x ktlintCheck -x jacocoTestReport -x jacocoTestCoverageVerification --no-daemon
 
 # ==========================================
-# 2. Runtime Stage (JRE 21 liviano)
+# 2. Runtime Stage (JRE 21 + New Relic APM)
 # ==========================================
-FROM eclipse-temurin:21-jre-alpine
+FROM ghcr.io/tp1-2-ingsis/monitoring-config:latest
 WORKDIR /deployments
 
-RUN addgroup -S quarkus && adduser -S quarkus -G quarkus
+RUN groupadd --system --gid 185 quarkus && useradd --system --uid 185 --gid quarkus quarkus
 
 COPY --from=builder --chown=quarkus:quarkus /app/build/quarkus-app/lib/ /deployments/lib/
 COPY --from=builder --chown=quarkus:quarkus /app/build/quarkus-app/*.jar /deployments/
@@ -28,5 +28,7 @@ COPY --from=builder --chown=quarkus:quarkus /app/build/quarkus-app/quarkus/ /dep
 
 USER quarkus:quarkus
 EXPOSE 8080
+
+ENV NEW_RELIC_APP_NAME=language
 
 ENTRYPOINT ["java", "-Dquarkus.http.host=0.0.0.0", "-Djava.util.logging.manager=org.jboss.logmanager.LogManager", "-jar", "/deployments/quarkus-run.jar"]
