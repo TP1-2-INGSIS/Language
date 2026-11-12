@@ -80,10 +80,16 @@
 # You can find more information about the UBI base runtime images and their configuration here:
 # https://rh-openjdk.github.io/redhat-openjdk-containers/
 ###
-FROM registry.access.redhat.com/ubi9/openjdk-21-runtime:1.24
+# NOTE: la imagen base pasó a ser la de Monitoring (JRE 21 + agente de New Relic),
+# que NO trae run-java.sh: por eso se arranca con `java -jar` directamente y las
+# opciones JVM de arriba (JAVA_OPTS*, JAVA_MAX_MEM_RATIO, ...) ya no aplican.
+# El agente se engancha solo vía JAVA_TOOL_OPTIONS (definido en la imagen base).
+FROM ghcr.io/tp1-2-ingsis/monitoring-config:latest
 
 ENV LANGUAGE='en_US:en'
 
+# Usuario no-root (UID 185, el mismo que usaba la imagen UBI anterior)
+RUN groupadd --system --gid 185 quarkus && useradd --system --uid 185 --gid quarkus quarkus
 
 # We make four distinct layers so if there are application changes the library layers can be re-used
 COPY --chown=185 build/quarkus-app/lib/ /deployments/lib/
@@ -93,8 +99,9 @@ COPY --chown=185 build/quarkus-app/quarkus/ /deployments/quarkus/
 
 EXPOSE 8080
 USER 185
-ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
-ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
 
-ENTRYPOINT [ "/opt/jboss/container/java/run/run-java.sh" ]
+# New Relic: NEW_RELIC_LICENSE_KEY se inyecta en runtime; el nombre es propio de este servicio.
+ENV NEW_RELIC_APP_NAME=language
+
+ENTRYPOINT ["java", "-Dquarkus.http.host=0.0.0.0", "-Djava.util.logging.manager=org.jboss.logmanager.LogManager", "-jar", "/deployments/quarkus-run.jar"]
 
