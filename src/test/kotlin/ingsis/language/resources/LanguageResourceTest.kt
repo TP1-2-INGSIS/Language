@@ -43,10 +43,10 @@ class LanguageResourceTest {
             .then()
             .statusCode(200)
             .contentType(ContentType.JSON)
-            .body("languages.size()", `is`(1))
-            .body("languages[0].name", `is`("dummy-lang"))
-            .body("languages[0].versions[0]", `is`("1.0"))
-            .body("languages[0].versions[1]", `is`("1.1"))
+            .body("size()", `is`(1))
+            .body("[0].id", `is`("dummy-lang"))
+            .body("[0].versions[0]", `is`("1.0"))
+            .body("[0].versions[1]", `is`("1.1"))
     }
 
     @Test

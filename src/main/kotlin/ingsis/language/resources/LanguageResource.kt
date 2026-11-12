@@ -29,7 +29,7 @@ class LanguageResource(
     private val m_service: LanguageService,
 ) {
     @GET
-    fun language(): Response = m_service.getAllLanguages().toResponse(::LanguageResponse)
+    fun language(): Response = m_service.getAllLanguages().toResponse { it.map(::LanguageResponse) }
 
     @POST
     @Path("/{lang}/validate")
