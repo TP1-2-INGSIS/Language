@@ -3,9 +3,9 @@ package ingsis.language.resources
 import ingsis.language.domain.model.DomainError
 import ingsis.language.domain.model.LanguageResult
 import ingsis.language.resources.dtos.ErrorResponse
-import jakarta.ws.rs.core.Response
+import org.springframework.http.ResponseEntity
 
-fun DomainError.toResponse(): Response {
+fun DomainError.toResponse(): ResponseEntity<Any> {
     val statusCode =
         when (this) {
             is DomainError.LanguageNotFound -> 404
@@ -15,16 +15,15 @@ fun DomainError.toResponse(): Response {
             is DomainError.InvalidSource -> 422
         }
 
-    return Response
+    return ResponseEntity
         .status(statusCode)
-        .entity(ErrorResponse(error = code, message = message))
-        .build()
+        .body(ErrorResponse(error = code, message = message))
 }
 
-fun <T, R> LanguageResult<T>.toResponse(transform: (T) -> R): Response =
+fun <T, R : Any> LanguageResult<T>.toResponse(transform: (T) -> R): ResponseEntity<Any> =
     when (this) {
-        is LanguageResult.Success -> Response.ok(transform(value)).build()
+        is LanguageResult.Success -> ResponseEntity.ok(transform(value))
         is LanguageResult.Failure -> error.toResponse()
     }
 
-fun <T> LanguageResult<T>.toResponse(): Response = toResponse { it }
+fun <T : Any> LanguageResult<T>.toResponse(): ResponseEntity<Any> = toResponse { it }

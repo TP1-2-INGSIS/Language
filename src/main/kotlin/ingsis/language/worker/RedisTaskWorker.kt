@@ -1,45 +1,44 @@
 package ingsis.language.worker
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import io.quarkus.redis.datasource.RedisDataSource
-import io.quarkus.redis.datasource.stream.StreamCommands
-import io.quarkus.redis.datasource.stream.XGroupCreateArgs
-import io.quarkus.redis.datasource.stream.XReadGroupArgs
-import io.quarkus.runtime.ShutdownEvent
-import io.quarkus.runtime.StartupEvent
-import jakarta.enterprise.context.ApplicationScoped
-import jakarta.enterprise.event.Observes
-import org.eclipse.microprofile.config.inject.ConfigProperty
-import org.jboss.logging.Logger
+import ingsis.language.worker.events.TaskEvent
+import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.SmartLifecycle
+import org.springframework.data.redis.connection.stream.Consumer
+import org.springframework.data.redis.connection.stream.ReadOffset
+import org.springframework.data.redis.connection.stream.StreamOffset
+import org.springframework.data.redis.connection.stream.StreamReadOptions
+import org.springframework.data.redis.core.StreamOperations
+import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.stereotype.Component
+import tools.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.util.concurrent.atomic.AtomicBoolean
 
-@ApplicationScoped
+@Component
 class RedisTaskWorker(
-    private val m_redisDataSource: RedisDataSource,
+    private val m_redisTemplate: StringRedisTemplate,
     private val m_taskProcessor: TaskProcessor,
     private val m_objectMapper: ObjectMapper,
-    @ConfigProperty(name = "ingsis.app.mode", defaultValue = "all")
+    @Value("\${ingsis.app.mode:all}")
     private val m_appMode: String,
-    @ConfigProperty(name = "ingsis.redis.stream.tasks", defaultValue = "tasks:printscript")
+    @Value("\${ingsis.redis.stream.tasks:tasks:printscript}")
     private val m_tasksStream: String,
-    @ConfigProperty(name = "ingsis.redis.stream.results", defaultValue = "tasks:results")
+    @Value("\${ingsis.redis.stream.results:tasks:results}")
     private val m_resultsStream: String,
-    @ConfigProperty(name = "ingsis.redis.stream.group", defaultValue = "language-workers")
+    @Value("\${ingsis.redis.stream.group:language-workers}")
     private val m_consumerGroup: String,
-    @ConfigProperty(name = "ingsis.redis.stream.consumer", defaultValue = "worker-1")
+    @Value("\${ingsis.redis.stream.consumer:worker-1}")
     private val m_consumerName: String,
-) {
-    private val log: Logger = Logger.getLogger(RedisTaskWorker::class.java)
+) : SmartLifecycle {
+    private val log = LoggerFactory.getLogger(RedisTaskWorker::class.java)
     private val running = AtomicBoolean(false)
     private var workerThread: Thread? = null
 
-    val streamCommands: StreamCommands<String, String, String>
-        get() = m_redisDataSource.stream(String::class.java)
+    val streamOps: StreamOperations<String, String, String>
+        get() = m_redisTemplate.opsForStream()
 
-    fun onStart(
-        @Observes event: StartupEvent,
-    ) {
+    override fun start() {
         if (m_appMode.equals("web", ignoreCase = true)) {
             log.info("App mode is '$m_appMode'. RedisTaskWorker is disabled.")
             return
@@ -48,20 +47,15 @@ class RedisTaskWorker(
         startWorkerLoop()
     }
 
-    fun onStop(
-        @Observes event: ShutdownEvent,
-    ) {
+    override fun stop() {
         stopWorkerLoop()
     }
 
+    override fun isRunning(): Boolean = running.get()
+
     fun initConsumerGroup() {
         try {
-            streamCommands.xgroupCreate(
-                m_tasksStream,
-                m_consumerGroup,
-                "0",
-                XGroupCreateArgs().mkstream(),
-            )
+            streamOps.createGroup(m_tasksStream, ReadOffset.from("0"), m_consumerGroup)
         } catch (e: Exception) {
             log.debug("Consumer group '$m_consumerGroup' already exists or stream ready: ${e.message}")
         }
@@ -72,27 +66,26 @@ class RedisTaskWorker(
         blockMs: Long = 1000,
     ): Int {
         val messages =
-            streamCommands.xreadgroup(
-                m_consumerGroup,
-                m_consumerName,
-                m_tasksStream,
-                ">",
-                XReadGroupArgs().count(batchSize).block(Duration.ofMillis(blockMs)),
+            streamOps.read(
+                Consumer.from(m_consumerGroup, m_consumerName),
+                StreamReadOptions.empty().count(batchSize.toLong()).block(Duration.ofMillis(blockMs)),
+                StreamOffset.create(m_tasksStream, ReadOffset.lastConsumed()),
             ) ?: return 0
 
         for (msg in messages) {
             try {
-                val dataStr = msg.payload()["data"] ?: msg.payload()["payload"]
+                val payload = msg.value
+                val dataStr = payload["data"] ?: payload["payload"]
                 if (dataStr != null) {
-                    val task = m_objectMapper.readValue(dataStr, ingsis.language.worker.events.TaskEvent::class.java)
+                    val task = m_objectMapper.readValue(dataStr, TaskEvent::class.java)
                     val result = m_taskProcessor.process(task)
                     val resultJson = m_objectMapper.writeValueAsString(result)
-                    streamCommands.xadd(m_resultsStream, mapOf("data" to resultJson))
+                    streamOps.add(m_resultsStream, mapOf("data" to resultJson))
                 }
             } catch (e: Exception) {
-                log.error("Failed to process message id '${msg.id()}': ${e.message}", e)
+                log.error("Failed to process message id '${msg.id}': ${e.message}", e)
             } finally {
-                streamCommands.xack(m_tasksStream, m_consumerGroup, msg.id())
+                streamOps.acknowledge(m_tasksStream, m_consumerGroup, msg.id)
             }
         }
         return messages.size
@@ -127,6 +120,4 @@ class RedisTaskWorker(
         workerThread?.interrupt()
         workerThread = null
     }
-
-    fun isRunning(): Boolean = running.get()
 }

@@ -8,12 +8,11 @@ import ingsis.language.domain.engine.LanguageEngine
 import ingsis.language.domain.model.DomainError
 import ingsis.language.domain.model.Language
 import ingsis.language.domain.model.LanguageResult
-import jakarta.enterprise.context.ApplicationScoped
-import jakarta.enterprise.inject.Instance
+import org.springframework.stereotype.Service
 
-@ApplicationScoped
+@Service
 class LanguageRegistry(
-    private val m_engines: Instance<LanguageEngine>,
+    private val m_engines: List<LanguageEngine>,
 ) {
     fun getAllLanguages(): List<Language> =
         m_engines.map { engine ->

@@ -2,7 +2,7 @@
 
 Microservicio computacional para el análisis, ejecución, formateo y testing de snippets de código para múltiples lenguajes (ej: PrintScript, Python, etc.).
 
-Construido sobre **Quarkus 3**, **Kotlin** y **Gradle Kotlin DSL**.
+Construido sobre **Spring Boot 4**, **Kotlin** y **Gradle Kotlin DSL**.
 
 ---
 
@@ -13,7 +13,7 @@ El servicio sigue una arquitectura limpia de capas con doble vía de activación
 ```mermaid
 flowchart TD
     subgraph Sincrono["1. Vía Síncrona (Tiempo Real: 5 a 15 ms)"]
-        Client["Cliente / Snippets Service"] -->|HTTP / JSON| Resource["LanguageResource (Quarkus REST)"]
+        Client["Cliente / Snippets Service"] -->|HTTP / JSON| Resource["LanguageResource (Spring WebMVC)"]
         Resource --> Service["LanguageService (Fachada)"]
     end
 
@@ -36,10 +36,10 @@ flowchart TD
 
 ### Principios Clave:
 * **The Twelve-Factor App (Factores V y VI):** El mismo binario soporta ejecución como API Web (`APP_MODE=web`), Worker de colas (`APP_MODE=worker`) o Híbrido (`APP_MODE=all`), garantizando inmutabilidad y despliegue elástico en Docker Swarm.
-* **Inversión de Dependencias (DIP) y Aislamiento:** Los motores de lenguaje son **Kotlin puro**, sin anotaciones ni dependencias de Quarkus. Esto permite correr pruebas unitarias en milisegundos sin levantar el contexto del framework.
+* **Inversión de Dependencias (DIP) y Aislamiento:** Los motores de lenguaje son **Kotlin puro**, sin anotaciones ni dependencias de Spring. El ensamblado de beans vive en `config/EngineConfig.kt`, permitiendo correr pruebas unitarias en milisegundos sin levantar el contexto del framework.
 * **Segregación de Interfaces (ISP):** Cada lenguaje implementa solo las capacidades que soporta (`validate`, `format`, `lint`, `execute`).
 * **Testing como Orquestación (SRP):** El motor no contiene lógica de testing. `TestingService` corre la ejecución a través de `ExecutionService` y evalúa si la salida coincide con el resultado esperado (`expectedOutputs`).
-* **Seguridad en Ejecución:** Las ejecuciones cuentan con **timeouts estrictos** y corren fuera del Event Loop reactivo (`@Blocking` / workers dedicados) para prevenir bloqueos por bucles infinitos (`while(true)`).
+* **Seguridad en Ejecución:** Las ejecuciones cuentan con **timeouts estrictos** y workers dedicados para prevenir bloqueos por bucles infinitos (`while(true)`).
 
 ---
 
@@ -48,19 +48,25 @@ flowchart TD
 ```text
 src/main/kotlin/ingsis/language/
 │
-├── resources/                 # Capa HTTP (Jakarta REST / Quarkus REST)
+├── LanguageApplication.kt     # Entrypoint Spring Boot
+│
+├── config/                    # Configuración e inyección de dependencias
+│   └── EngineConfig.kt        # Registro de motores de dominio puro como beans
+│
+├── resources/                 # Capa HTTP (Spring WebMVC)
 │   ├── LanguageResource.kt    # GET /languages, POST validate, format, lint, execute, test
-│   ├── ResponseMapper.kt      # Extensiones de mapeo de resultados a HTTP Response
-│   └── dtos/                  # Request / Response DTOs inmutables (Jackson)
+│   ├── GlobalExceptionHandler.kt # Manejo uniforme de errores JSON malformados
+│   ├── ResponseMapper.kt      # Extensiones de mapeo de resultados a ResponseEntity
+│   └── dtos/                  # Request / Response DTOs inmutables (Jackson 3)
 │
 ├── services/                  # Casos de uso y orquestación
 │   ├── LanguageService.kt     # Fachada orquestadora
 │   ├── ExecutionService.kt    # Orquesta ejecución delegando al motor
 │   ├── TestingService.kt      # Evalúa aserciones sobre ExecutionService
-│   └── LanguageRegistry.kt    # Selector/Factory dinámico de implementaciones de LanguageEngine
+│   └── LanguageRegistry.kt    # Selector dinámico de implementaciones de LanguageEngine
 │
 ├── worker/                    # Procesamiento asíncrono (Redis Streams)
-│   ├── RedisTaskWorker.kt     # Consumidor con Consumer Groups (XREADGROUP / XACK)
+│   ├── RedisTaskWorker.kt     # Consumidor SmartLifecycle con Consumer Groups (XREADGROUP / XACK)
 │   ├── TaskProcessor.kt       # Ruteo y procesamiento de tareas hacia los servicios
 │   └── events/                # DTOs de eventos (TaskEvent, TaskResultEvent, TaskType)
 │
@@ -105,8 +111,8 @@ Configurable mediante la variable de entorno `APP_MODE`:
 ## 5. Desarrollo y Comandos Útiles
 
 ```bash
-# Modo desarrollo con recarga en vivo (Live Reload)
-./gradlew quarkusDev
+# Ejecutar aplicación en modo desarrollo
+./gradlew bootRun
 
 # Ejecutar tests automatizados
 ./gradlew test
@@ -129,6 +135,6 @@ Configurable mediante la variable de entorno `APP_MODE`:
 # Configurar Git hooks (.githooks/)
 ./gradlew installGitHooks
 
-# Compilar empaquetado para producción (Fast-JAR)
-./gradlew build
+# Compilar empaquetado ejecutable para producción (Boot JAR)
+./gradlew bootJar
 ```

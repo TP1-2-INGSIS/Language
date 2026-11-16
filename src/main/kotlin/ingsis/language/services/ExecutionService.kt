@@ -2,9 +2,9 @@ package ingsis.language.services
 
 import ingsis.language.domain.model.ExecutionReport
 import ingsis.language.domain.model.LanguageResult
-import jakarta.enterprise.context.ApplicationScoped
+import org.springframework.stereotype.Service
 
-@ApplicationScoped
+@Service
 class ExecutionService(
     private val m_registry: LanguageRegistry,
 ) {

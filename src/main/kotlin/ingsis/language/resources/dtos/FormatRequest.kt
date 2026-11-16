@@ -1,6 +1,6 @@
 package ingsis.language.resources.dtos
 
-import com.fasterxml.jackson.databind.JsonNode
+import tools.jackson.databind.JsonNode
 
 data class FormatRequest(
     val content: String,

@@ -2,9 +2,9 @@ package ingsis.language.services
 
 import ingsis.language.domain.model.LanguageResult
 import ingsis.language.domain.model.TestReport
-import jakarta.enterprise.context.ApplicationScoped
+import org.springframework.stereotype.Service
 
-@ApplicationScoped
+@Service
 class TestingService(
     private val m_executionService: ExecutionService,
 ) {

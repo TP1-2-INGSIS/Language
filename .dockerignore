@@ -1,0 +1,10 @@
+.git
+.gradle
+.kotlin
+.quarkus
+.idea
+build
+out
+*.log
+.env
+.env.local

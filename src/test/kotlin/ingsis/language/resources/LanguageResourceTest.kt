@@ -1,6 +1,5 @@
 package ingsis.language.resources
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import ingsis.language.domain.engine.CodeExecutor
 import ingsis.language.domain.engine.CodeFormatter
 import ingsis.language.domain.engine.CodeLinter
@@ -16,37 +15,53 @@ import ingsis.language.resources.dtos.FormatRequest
 import ingsis.language.resources.dtos.LintRequest
 import ingsis.language.resources.dtos.TestRequest
 import ingsis.language.resources.dtos.ValidateRequest
+import ingsis.language.services.ExecutionService
 import ingsis.language.services.LanguageRegistry
-import io.quarkus.test.InjectMock
-import io.quarkus.test.junit.QuarkusTest
-import io.restassured.RestAssured.given
-import io.restassured.http.ContentType
-import org.hamcrest.CoreMatchers.`is`
+import ingsis.language.services.LanguageService
+import ingsis.language.services.TestingService
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Import
+import org.springframework.http.MediaType
+import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import tools.jackson.databind.ObjectMapper
 
-@QuarkusTest
+@WebMvcTest(LanguageResource::class)
+@Import(LanguageService::class, ExecutionService::class, TestingService::class)
+@ActiveProfiles("test")
 class LanguageResourceTest {
-    @InjectMock
-    lateinit var registry: LanguageRegistry
+    @Autowired
+    private lateinit var mockMvc: MockMvc
 
-    private val objectMapper = ObjectMapper()
+    @Autowired
+    private lateinit var objectMapper: ObjectMapper
+
+    @MockitoBean
+    private lateinit var registry: LanguageRegistry
 
     @Test
     fun `get languages returns 200 with languages list`() {
         val dummyLanguages = listOf(Language(name = "dummy-lang", versions = listOf("1.0", "1.1")))
         Mockito.`when`(registry.getAllLanguages()).thenReturn(dummyLanguages)
 
-        given()
-            .`when`()
-            .get("/languages")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("size()", `is`(1))
-            .body("[0].id", `is`("dummy-lang"))
-            .body("[0].versions[0]", `is`("1.0"))
-            .body("[0].versions[1]", `is`("1.1"))
+        mockMvc
+            .perform(get("/languages"))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].id").value("dummy-lang"))
+            .andExpect(jsonPath("$[0].versions[0]").value("1.0"))
+            .andExpect(jsonPath("$[0].versions[1]").value("1.1"))
     }
 
     @Test
@@ -59,16 +74,15 @@ class LanguageResourceTest {
             .`when`(registry.getValidator("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(validator))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(ValidateRequest(content = "let a: number = 5;", version = "1.1"))
-            .`when`()
-            .post("/languages/printscript/validate")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("valid", `is`(true))
-            .body("errors.size()", `is`(0))
+        mockMvc
+            .perform(
+                post("/languages/printscript/validate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ValidateRequest(content = "let a: number = 5;", version = "1.1"))),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.valid").value(true))
+            .andExpect(jsonPath("$.errors.length()").value(0))
     }
 
     @Test
@@ -90,20 +104,19 @@ class LanguageResourceTest {
             .`when`(registry.getValidator("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(validator))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(ValidateRequest(content = "let a: number = 5", version = "1.1"))
-            .`when`()
-            .post("/languages/printscript/validate")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("valid", `is`(false))
-            .body("errors.size()", `is`(1))
-            .body("errors[0].rule", `is`("UNEXPECTED_TOKEN"))
-            .body("errors[0].message", `is`("Expected ';'"))
-            .body("errors[0].line", `is`(1))
-            .body("errors[0].column", `is`(17))
+        mockMvc
+            .perform(
+                post("/languages/printscript/validate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ValidateRequest(content = "let a: number = 5", version = "1.1"))),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.valid").value(false))
+            .andExpect(jsonPath("$.errors.length()").value(1))
+            .andExpect(jsonPath("$.errors[0].rule").value("UNEXPECTED_TOKEN"))
+            .andExpect(jsonPath("$.errors[0].message").value("Expected ';'"))
+            .andExpect(jsonPath("$.errors[0].line").value(1))
+            .andExpect(jsonPath("$.errors[0].column").value(17))
     }
 
     @Test
@@ -112,15 +125,14 @@ class LanguageResourceTest {
             .`when`(registry.getValidator("unknown", "1.1"))
             .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(ValidateRequest(content = "let a = 1;", version = "1.1"))
-            .`when`()
-            .post("/languages/unknown/validate")
-            .then()
-            .statusCode(404)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("LANGUAGE_NOT_FOUND"))
+        mockMvc
+            .perform(
+                post("/languages/unknown/validate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ValidateRequest(content = "let a = 1;", version = "1.1"))),
+            ).andExpect(status().isNotFound)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("LANGUAGE_NOT_FOUND"))
     }
 
     @Test
@@ -129,15 +141,14 @@ class LanguageResourceTest {
             .`when`(registry.getValidator("printscript", "9.9"))
             .thenReturn(LanguageResult.Failure(DomainError.UnsupportedVersion("printscript", "9.9")))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(ValidateRequest(content = "let a = 1;", version = "9.9"))
-            .`when`()
-            .post("/languages/printscript/validate")
-            .then()
-            .statusCode(400)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("UNSUPPORTED_VERSION"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/validate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ValidateRequest(content = "let a = 1;", version = "9.9"))),
+            ).andExpect(status().isBadRequest)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("UNSUPPORTED_VERSION"))
     }
 
     @Test
@@ -146,28 +157,38 @@ class LanguageResourceTest {
             .`when`(registry.getValidator("printscript", "1.1"))
             .thenReturn(LanguageResult.Failure(DomainError.CapabilityNotSupported("printscript", "validate")))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(ValidateRequest(content = "let a = 1;", version = "1.1"))
-            .`when`()
-            .post("/languages/printscript/validate")
-            .then()
-            .statusCode(501)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("CAPABILITY_NOT_SUPPORTED"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/validate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ValidateRequest(content = "let a = 1;", version = "1.1"))),
+            ).andExpect(status().isNotImplemented)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("CAPABILITY_NOT_SUPPORTED"))
     }
 
     @Test
     fun `validate returns 400 when request has blank version`() {
-        given()
-            .contentType(ContentType.JSON)
-            .body(ValidateRequest(content = "let a = 1;", version = ""))
-            .`when`()
-            .post("/languages/printscript/validate")
-            .then()
-            .statusCode(400)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("BAD_REQUEST"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/validate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ValidateRequest(content = "let a = 1;", version = ""))),
+            ).andExpect(status().isBadRequest)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("BAD_REQUEST"))
+    }
+
+    @Test
+    fun `validate returns 400 when request body is malformed`() {
+        mockMvc
+            .perform(
+                post("/languages/printscript/validate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{ invalid json"),
+            ).andExpect(status().isBadRequest)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("BAD_REQUEST"))
     }
 
     @Test
@@ -182,15 +203,16 @@ class LanguageResourceTest {
             .`when`(registry.getFormatter("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(formatter))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(FormatRequest(content = "let a:number=5;", version = "1.1", rules = rulesNode))
-            .`when`()
-            .post("/languages/printscript/format")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("formatted", `is`("let a : number = 5;\n"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/format")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(FormatRequest(content = "let a:number=5;", version = "1.1", rules = rulesNode)),
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.formatted").value("let a : number = 5;\n"))
     }
 
     @Test
@@ -204,28 +226,26 @@ class LanguageResourceTest {
             .`when`(registry.getFormatter("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(formatter))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(FormatRequest(content = "invalid source", version = "1.1"))
-            .`when`()
-            .post("/languages/printscript/format")
-            .then()
-            .statusCode(422)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("INVALID_SOURCE"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/format")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(FormatRequest(content = "invalid source", version = "1.1"))),
+            ).andExpect(status().isUnprocessableContent)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("INVALID_SOURCE"))
     }
 
     @Test
     fun `format returns 400 when version is blank`() {
-        given()
-            .contentType(ContentType.JSON)
-            .body(FormatRequest(content = "let a = 1;", version = ""))
-            .`when`()
-            .post("/languages/printscript/format")
-            .then()
-            .statusCode(400)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("BAD_REQUEST"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/format")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(FormatRequest(content = "let a = 1;", version = ""))),
+            ).andExpect(status().isBadRequest)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("BAD_REQUEST"))
     }
 
     @Test
@@ -252,19 +272,18 @@ class LanguageResourceTest {
             .`when`(registry.getLinter("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(linter))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(LintRequest(content = "let my_var: number = 5;", version = "1.1"))
-            .`when`()
-            .post("/languages/printscript/lint")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("violations.size()", `is`(1))
-            .body("violations[0].rule", `is`("identifierFormat"))
-            .body("violations[0].message", `is`("my_var is not camel case"))
-            .body("violations[0].line", `is`(1))
-            .body("violations[0].column", `is`(5))
+        mockMvc
+            .perform(
+                post("/languages/printscript/lint")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(LintRequest(content = "let my_var: number = 5;", version = "1.1"))),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.violations.length()").value(1))
+            .andExpect(jsonPath("$.violations[0].rule").value("identifierFormat"))
+            .andExpect(jsonPath("$.violations[0].message").value("my_var is not camel case"))
+            .andExpect(jsonPath("$.violations[0].line").value(1))
+            .andExpect(jsonPath("$.violations[0].column").value(5))
     }
 
     @Test
@@ -278,28 +297,26 @@ class LanguageResourceTest {
             .`when`(registry.getLinter("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(linter))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(LintRequest(content = "invalid code", version = "1.1"))
-            .`when`()
-            .post("/languages/printscript/lint")
-            .then()
-            .statusCode(422)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("INVALID_SOURCE"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/lint")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(LintRequest(content = "invalid code", version = "1.1"))),
+            ).andExpect(status().isUnprocessableContent)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("INVALID_SOURCE"))
     }
 
     @Test
     fun `lint returns 400 when version is blank`() {
-        given()
-            .contentType(ContentType.JSON)
-            .body(LintRequest(content = "let a = 1;", version = ""))
-            .`when`()
-            .post("/languages/printscript/lint")
-            .then()
-            .statusCode(400)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("BAD_REQUEST"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/lint")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(LintRequest(content = "let a = 1;", version = ""))),
+            ).andExpect(status().isBadRequest)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("BAD_REQUEST"))
     }
 
     @Test
@@ -314,17 +331,20 @@ class LanguageResourceTest {
             .`when`(registry.getExecutor("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(executor))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(ExecuteRequest(content = "println(\"Ana\");", version = "1.1", inputs = listOf("Ana")))
-            .`when`()
-            .post("/languages/printscript/execute")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("outputs.size()", `is`(1))
-            .body("outputs[0]", `is`("Ana"))
-            .body("error", org.hamcrest.CoreMatchers.nullValue())
+        mockMvc
+            .perform(
+                post("/languages/printscript/execute")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(
+                            ExecuteRequest(content = "println(\"Ana\");", version = "1.1", inputs = listOf("Ana")),
+                        ),
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.outputs.length()").value(1))
+            .andExpect(jsonPath("$.outputs[0]").value("Ana"))
+            .andExpect(jsonPath("$.error").value(nullValue()))
     }
 
     @Test
@@ -346,32 +366,30 @@ class LanguageResourceTest {
             .`when`(registry.getExecutor("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(executor))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(ExecuteRequest(content = "readInput();", version = "1.1"))
-            .`when`()
-            .post("/languages/printscript/execute")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("outputs.size()", `is`(0))
-            .body("error.rule", `is`("INPUTS_EXHAUSTED"))
-            .body("error.message", `is`("Input requested but none left"))
-            .body("error.line", `is`(1))
-            .body("error.column", `is`(17))
+        mockMvc
+            .perform(
+                post("/languages/printscript/execute")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ExecuteRequest(content = "readInput();", version = "1.1"))),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.outputs.length()").value(0))
+            .andExpect(jsonPath("$.error.rule").value("INPUTS_EXHAUSTED"))
+            .andExpect(jsonPath("$.error.message").value("Input requested but none left"))
+            .andExpect(jsonPath("$.error.line").value(1))
+            .andExpect(jsonPath("$.error.column").value(17))
     }
 
     @Test
     fun `execute returns 400 when version is blank`() {
-        given()
-            .contentType(ContentType.JSON)
-            .body(ExecuteRequest(content = "let a = 1;", version = ""))
-            .`when`()
-            .post("/languages/printscript/execute")
-            .then()
-            .statusCode(400)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("BAD_REQUEST"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/execute")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ExecuteRequest(content = "let a = 1;", version = ""))),
+            ).andExpect(status().isBadRequest)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("BAD_REQUEST"))
     }
 
     @Test
@@ -380,15 +398,14 @@ class LanguageResourceTest {
             .`when`(registry.getExecutor("unknown", "1.1"))
             .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(ExecuteRequest(content = "let a = 1;", version = "1.1"))
-            .`when`()
-            .post("/languages/unknown/execute")
-            .then()
-            .statusCode(404)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("LANGUAGE_NOT_FOUND"))
+        mockMvc
+            .perform(
+                post("/languages/unknown/execute")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ExecuteRequest(content = "let a = 1;", version = "1.1"))),
+            ).andExpect(status().isNotFound)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("LANGUAGE_NOT_FOUND"))
     }
 
     @Test
@@ -397,15 +414,14 @@ class LanguageResourceTest {
             .`when`(registry.getExecutor("printscript", "1.1"))
             .thenReturn(LanguageResult.Failure(DomainError.CapabilityNotSupported("printscript", "execute")))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(ExecuteRequest(content = "let a = 1;", version = "1.1"))
-            .`when`()
-            .post("/languages/printscript/execute")
-            .then()
-            .statusCode(501)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("CAPABILITY_NOT_SUPPORTED"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/execute")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(ExecuteRequest(content = "let a = 1;", version = "1.1"))),
+            ).andExpect(status().isNotImplemented)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("CAPABILITY_NOT_SUPPORTED"))
     }
 
     @Test
@@ -418,23 +434,25 @@ class LanguageResourceTest {
             .`when`(registry.getExecutor("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(executor))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(
-                TestRequest(
-                    content = "println(\"Hola Ana\");",
-                    version = "1.1",
-                    inputs = emptyList(),
-                    expectedOutputs = listOf("Hola Ana"),
-                ),
-            ).`when`()
-            .post("/languages/printscript/test")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("passed", `is`(true))
-            .body("expectedOutputs[0]", `is`("Hola Ana"))
-            .body("actualOutputs[0]", `is`("Hola Ana"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/test")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(
+                            TestRequest(
+                                content = "println(\"Hola Ana\");",
+                                version = "1.1",
+                                inputs = emptyList(),
+                                expectedOutputs = listOf("Hola Ana"),
+                            ),
+                        ),
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.passed").value(true))
+            .andExpect(jsonPath("$.expectedOutputs[0]").value("Hola Ana"))
+            .andExpect(jsonPath("$.actualOutputs[0]").value("Hola Ana"))
     }
 
     @Test
@@ -447,23 +465,25 @@ class LanguageResourceTest {
             .`when`(registry.getExecutor("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(executor))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(
-                TestRequest(
-                    content = "println(\"Hola  Ana\");",
-                    version = "1.1",
-                    inputs = emptyList(),
-                    expectedOutputs = listOf("Hola Ana"),
-                ),
-            ).`when`()
-            .post("/languages/printscript/test")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("passed", `is`(false))
-            .body("expectedOutputs[0]", `is`("Hola Ana"))
-            .body("actualOutputs[0]", `is`("Hola  Ana"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/test")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(
+                            TestRequest(
+                                content = "println(\"Hola  Ana\");",
+                                version = "1.1",
+                                inputs = emptyList(),
+                                expectedOutputs = listOf("Hola Ana"),
+                            ),
+                        ),
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.passed").value(false))
+            .andExpect(jsonPath("$.expectedOutputs[0]").value("Hola Ana"))
+            .andExpect(jsonPath("$.actualOutputs[0]").value("Hola  Ana"))
     }
 
     @Test
@@ -483,39 +503,40 @@ class LanguageResourceTest {
             .`when`(registry.getExecutor("printscript", "1.1"))
             .thenReturn(LanguageResult.Success(executor))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(
-                TestRequest(
-                    content = "readInput();",
-                    version = "1.1",
-                    inputs = emptyList(),
-                    expectedOutputs = listOf("Hola"),
-                ),
-            ).`when`()
-            .post("/languages/printscript/test")
-            .then()
-            .statusCode(200)
-            .contentType(ContentType.JSON)
-            .body("passed", `is`(false))
-            .body("actualOutputs.size()", `is`(0))
-            .body("error.rule", `is`("INPUTS_EXHAUSTED"))
-            .body("error.message", `is`("Input requested but none left"))
-            .body("error.line", `is`(1))
-            .body("error.column", `is`(17))
+        mockMvc
+            .perform(
+                post("/languages/printscript/test")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(
+                            TestRequest(
+                                content = "readInput();",
+                                version = "1.1",
+                                inputs = emptyList(),
+                                expectedOutputs = listOf("Hola"),
+                            ),
+                        ),
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.passed").value(false))
+            .andExpect(jsonPath("$.actualOutputs.length()").value(0))
+            .andExpect(jsonPath("$.error.rule").value("INPUTS_EXHAUSTED"))
+            .andExpect(jsonPath("$.error.message").value("Input requested but none left"))
+            .andExpect(jsonPath("$.error.line").value(1))
+            .andExpect(jsonPath("$.error.column").value(17))
     }
 
     @Test
     fun `test returns 400 when version is blank`() {
-        given()
-            .contentType(ContentType.JSON)
-            .body(TestRequest(content = "let a = 1;", version = ""))
-            .`when`()
-            .post("/languages/printscript/test")
-            .then()
-            .statusCode(400)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("BAD_REQUEST"))
+        mockMvc
+            .perform(
+                post("/languages/printscript/test")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(TestRequest(content = "let a = 1;", version = ""))),
+            ).andExpect(status().isBadRequest)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("BAD_REQUEST"))
     }
 
     @Test
@@ -524,14 +545,13 @@ class LanguageResourceTest {
             .`when`(registry.getExecutor("unknown", "1.1"))
             .thenReturn(LanguageResult.Failure(DomainError.LanguageNotFound("unknown")))
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(TestRequest(content = "let a = 1;", version = "1.1"))
-            .`when`()
-            .post("/languages/unknown/test")
-            .then()
-            .statusCode(404)
-            .contentType(ContentType.JSON)
-            .body("error", `is`("LANGUAGE_NOT_FOUND"))
+        mockMvc
+            .perform(
+                post("/languages/unknown/test")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(TestRequest(content = "let a = 1;", version = "1.1"))),
+            ).andExpect(status().isNotFound)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.error").value("LANGUAGE_NOT_FOUND"))
     }
 }
