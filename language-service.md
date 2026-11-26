@@ -203,6 +203,26 @@ Códigos de `error.rule` reservados por el servicio: `INPUTS_EXHAUSTED`, `TIMEOU
 
 ---
 
+### `WS /languages/{lang}/run` (ejecución interactiva)
+WebSocket para correr un programa con `println` y `readInput` en vivo. Activo cuando la API web lo está (`APP_MODE=web` o `all`). Mensajes JSON de texto. Lo consume Snippets (relay para la UI), por la red interna: `ws://language-service:8080/languages/{lang}/run`.
+
+| Dirección | Mensaje | Cuándo |
+|---|---|---|
+| cliente → servidor | `{"type":"start","content":"…","version":"1.1","env":{"K":"V"}}` | Primer mensaje (`env` opcional) |
+| cliente → servidor | `{"type":"input","value":"…"}` | Respuesta a un `input-request` |
+| cliente → servidor | `{"type":"stop"}` | Cancela la ejecución |
+| servidor → cliente | `{"type":"output","value":"…"}` | En cada `println`, al momento |
+| servidor → cliente | `{"type":"input-request","prompt":"…"}` | En cada `readInput`; el programa queda bloqueado |
+| servidor → cliente | `{"type":"finished"}` | Fin normal; luego se cierra con 1000 |
+| servidor → cliente | `{"type":"error","message":"…","line":1,"column":1}` | Lenguaje/versión desconocidos, error de sintaxis o de runtime, timeout, `"busy"`; `line`/`column` solo si se conocen. Luego se cierra |
+
+* El código se valida antes de ejecutarse: un error de sintaxis o semántico produce `error` sin ningún `output`.
+* **Timeouts:** `EXECUTION_INPUT_TIMEOUT` segundos esperando un `input` (default 60) y 5 minutos de ejecución total (`EXECUTION_MAX_DURATION`, segundos, default 300). Al vencer se manda `error` y se cierra.
+* **Concurrencia:** cada sesión corre en su propio hilo de un pool acotado (`EXECUTION_MAX_SESSIONS`, default 8). Si está lleno: `error` con mensaje `busy` y cierre.
+* `stop` o la desconexión del cliente interrumpen el hilo de ejecución. Un programa que hace un loop sin I/O no se puede interrumpir, pero la sesión igual se cierra al vencer el límite total.
+
+---
+
 ### `POST /languages/{lang}/test`
 Corre **un** test: ejecuta con `inputs` y compara contra `expectedOutputs`.
 
