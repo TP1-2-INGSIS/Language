@@ -26,6 +26,7 @@ class LanguageRegistryTest {
     private class FakeCompleteEngine(
         override val name: String,
         override val versions: List<String>,
+        override val engineVersion: String = "9.9.9",
     ) : LanguageEngine,
         CodeValidator,
         CodeFormatter,
@@ -58,6 +59,7 @@ class LanguageRegistryTest {
     private class FakeEmptyEngine(
         override val name: String,
         override val versions: List<String>,
+        override val engineVersion: String = "9.9.9",
     ) : LanguageEngine
 
     @Test

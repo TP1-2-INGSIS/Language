@@ -1,10 +1,11 @@
 package ingsis.language.domain.engine.printscript
 
 import ingsis.language.domain.model.Diagnostic
+import ingsis.language.domain.model.DomainError
 import ingsis.language.domain.model.ExecutionReport
+import ingsis.language.domain.model.InvalidRulesException
 import ingsis.language.domain.model.ValidationReport
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -63,20 +64,16 @@ class PrintScriptEngineTest {
     }
 
     @Test
-    fun `DefaultPrintScriptRunner provides sensible defaults`() {
-        val defaultRunner = DefaultPrintScriptRunner()
+    fun `invalid rules become an InvalidRules failure`() {
+        Mockito.`when`(runner.format("code", "1.1", "[]")).thenThrow(InvalidRulesException("bad"))
+        Mockito.`when`(runner.lint("code", "1.1", "[]")).thenThrow(InvalidRulesException("bad"))
 
-        val valReport = defaultRunner.validate("code", "1.1")
-        assertTrue(valReport.isValid)
-        assertTrue(valReport.diagnostics.isEmpty())
+        assertEquals(DomainError.InvalidRules("bad"), engine.format("code", "1.1", "[]").errorOrNull())
+        assertEquals(DomainError.InvalidRules("bad"), engine.lint("code", "1.1", "[]").errorOrNull())
+    }
 
-        assertEquals("code", defaultRunner.format("code", "1.1", "{}"))
-
-        val lintReport = defaultRunner.lint("code", "1.1", "{}")
-        assertTrue(lintReport.isValid)
-
-        val execReport = defaultRunner.execute("code", "1.1", emptyList())
-        assertTrue(execReport.outputs.isEmpty())
-        assertNull(execReport.error)
+    @Test
+    fun `engine exposes its version`() {
+        assertEquals("2.0.0", PrintScriptEngine(runner, "2.0.0").engineVersion)
     }
 }

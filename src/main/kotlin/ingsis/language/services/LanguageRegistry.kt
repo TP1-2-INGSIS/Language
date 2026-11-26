@@ -16,7 +16,7 @@ class LanguageRegistry(
 ) {
     fun getAllLanguages(): List<Language> =
         m_engines.map { engine ->
-            Language(name = engine.name, versions = engine.versions)
+            Language(name = engine.name, versions = engine.versions, engineVersion = engine.engineVersion)
         }
 
     fun getEngine(

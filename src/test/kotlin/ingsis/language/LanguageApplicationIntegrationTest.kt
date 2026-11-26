@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.test.context.ActiveProfiles
 import tools.jackson.databind.ObjectMapper
+import java.io.File
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -52,30 +53,34 @@ class LanguageApplicationIntegrationTest {
         assertEquals(200, languagesRes.statusCode())
         val languagesNode = objectMapper.readTree(languagesRes.body())
         assertEquals("printscript", languagesNode[0]["id"].asString())
+        assertEquals(
+            Regex("""cncVersion=(.+)""").find(File("gradle.properties").readText())!!.groupValues[1],
+            languagesNode[0]["engineVersion"].asString(),
+        )
     }
 
     @Test
     fun `all printscript operations work end to end without mocks`() {
-        val validateRes = post("/languages/printscript/validate", """{"content":"let a = 1;","version":"1.1"}""")
+        val validateRes = post("/languages/printscript/validate", """{"content":"let a: number = 1;","version":"1.1"}""")
         assertEquals(200, validateRes.statusCode())
         assertTrue(objectMapper.readTree(validateRes.body())["valid"].asBoolean())
 
-        val formatRes = post("/languages/printscript/format", """{"content":"let a=1;","version":"1.1"}""")
+        val formatRes = post("/languages/printscript/format", """{"content":"let a:number=1;","version":"1.1"}""")
         assertEquals(200, formatRes.statusCode())
-        assertEquals("let a=1;", objectMapper.readTree(formatRes.body())["formatted"].asString())
+        assertEquals("let a:number=1;", objectMapper.readTree(formatRes.body())["formatted"].asString())
 
-        val lintRes = post("/languages/printscript/lint", """{"content":"let a = 1;","version":"1.1"}""")
+        val lintRes = post("/languages/printscript/lint", """{"content":"let a: number = 1;","version":"1.1"}""")
         assertEquals(200, lintRes.statusCode())
         assertEquals(0, objectMapper.readTree(lintRes.body())["violations"].size())
 
         val executeRes = post("/languages/printscript/execute", """{"content":"println(1);","version":"1.1"}""")
         assertEquals(200, executeRes.statusCode())
-        assertEquals(0, objectMapper.readTree(executeRes.body())["outputs"].size())
+        assertEquals("1", objectMapper.readTree(executeRes.body())["outputs"][0].asString())
 
         val testRes =
             post(
                 "/languages/printscript/test",
-                """{"content":"println(1);","version":"1.1","inputs":[],"expectedOutputs":[]}""",
+                """{"content":"println(1);","version":"1.1","inputs":[],"expectedOutputs":["1"]}""",
             )
         assertEquals(200, testRes.statusCode())
         assertTrue(objectMapper.readTree(testRes.body())["passed"].asBoolean())

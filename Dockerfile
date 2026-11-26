@@ -8,10 +8,18 @@ COPY gradlew gradlew
 COPY gradle gradle
 COPY gradle.properties build.gradle.kts settings.gradle.kts ./
 
-RUN chmod +x gradlew && ./gradlew dependencies --no-daemon
+# CNC (PrintScript engine) is downloaded from GitHub Packages. Credentials come from BuildKit
+# secrets (docker build --secret id=gpr_user,env=GITHUB_ACTOR --secret id=gpr_token,env=GPR_TOKEN),
+# so they never end up in an image layer.
+RUN --mount=type=secret,id=gpr_user --mount=type=secret,id=gpr_token \
+    chmod +x gradlew && \
+    GITHUB_ACTOR="$(cat /run/secrets/gpr_user 2>/dev/null)" GPR_TOKEN="$(cat /run/secrets/gpr_token 2>/dev/null)" \
+    ./gradlew dependencies --no-daemon
 
 COPY src src
-RUN ./gradlew bootJar --no-daemon
+RUN --mount=type=secret,id=gpr_user --mount=type=secret,id=gpr_token \
+    GITHUB_ACTOR="$(cat /run/secrets/gpr_user 2>/dev/null)" GPR_TOKEN="$(cat /run/secrets/gpr_token 2>/dev/null)" \
+    ./gradlew bootJar --no-daemon
 
 # ==========================================
 # 2. Runtime Stage (JRE 21 + New Relic APM)
