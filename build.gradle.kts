@@ -4,6 +4,7 @@ plugins {
     id("org.springframework.boot") version "4.1.2"
     id("io.spring.dependency-management") version "1.1.7"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
+    id("dev.detekt") version "2.0.0-alpha.6"
     jacoco
 }
 
@@ -72,6 +73,14 @@ ktlint {
     android.set(false)
     outputToConsole.set(true)
     ignoreFailures.set(false)
+}
+
+detekt {
+    // Full config built on detekt's default one; our deliberate changes are commented in the file.
+    config.setFrom(files("config/detekt/detekt.yml"))
+    buildUponDefaultConfig = true
+    // Pre-existing findings are accepted via the baseline so new code is checked from now on.
+    baseline = file("config/detekt/detekt-baseline.xml")
 }
 
 tasks.register<Exec>("installGitHooks") {

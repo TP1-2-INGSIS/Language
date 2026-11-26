@@ -163,7 +163,11 @@ CNC aplica una sola regla "de estructura" por llamada; Language las ejecuta en p
 # Auto-formatear código automáticamente (Ktlint)
 ./gradlew ktlintFormat
 
-# Chequeo completo (ktlint + tests + jacoco - lo mismo que corre en CI)
+# Análisis estático (detekt) y regeneración del baseline
+./gradlew detekt
+./gradlew detektBaseline
+
+# Chequeo completo (ktlint + detekt + tests + jacoco - lo mismo que corre en CI)
 ./gradlew check
 
 # Configurar Git hooks (.githooks/)
@@ -172,3 +176,19 @@ CNC aplica una sola regla "de estructura" por llamada; Language las ejecuta en p
 # Compilar empaquetado ejecutable para producción (Boot JAR)
 ./gradlew bootJar
 ```
+
+### 5.1 Herramientas de calidad
+
+Todo corre dentro de `./gradlew check`; los hooks versionados en `.githooks/` (`pre-commit`: ktlintFormat + ktlintCheck, `pre-push`: `check`) se instalan con `./gradlew installGitHooks`.
+
+**ktlint** (1.5.0) se configura en `.editorconfig`. Reglas propias (distintas del default):
+1. `max_line_length = 140`, alineado con detekt.
+2. `ij_kotlin_allow_trailing_comma*` = `true` (trailing commas permitidas, no obligatorias) y se deshabilitan `ktlint_standard_multiline-expression-wrapping` y `ktlint_standard_string-template-indent`.
+
+**detekt** (`dev.detekt` 2.0.0-alpha.6, la línea 1.23.x no soporta Kotlin 2.4) se configura en `config/detekt/detekt.yml` (default + cambios comentados). Reglas propias:
+1. `MaxLineLength.maxLineLength = 140` (default 120).
+2. `TooManyFunctions.allowedFunctionsPerClass = 15` (default 11).
+3. `ConstructorParameterNaming.privateParameterPattern` acepta el prefijo `m_` usado por el equipo.
+
+Los hallazgos preexistentes están en `config/detekt/detekt-baseline.xml`; el código nuevo se analiza completo.
+
