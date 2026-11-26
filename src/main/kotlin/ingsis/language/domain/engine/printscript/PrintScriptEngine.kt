@@ -4,8 +4,11 @@ import ingsis.language.domain.engine.CodeExecutor
 import ingsis.language.domain.engine.CodeFormatter
 import ingsis.language.domain.engine.CodeLinter
 import ingsis.language.domain.engine.CodeValidator
+import ingsis.language.domain.engine.InteractiveExecutor
 import ingsis.language.domain.engine.LanguageEngine
+import ingsis.language.domain.model.Diagnostic
 import ingsis.language.domain.model.DomainError
+import ingsis.language.domain.model.ExecutionIO
 import ingsis.language.domain.model.ExecutionReport
 import ingsis.language.domain.model.InvalidRulesException
 import ingsis.language.domain.model.LanguageResult
@@ -18,7 +21,8 @@ class PrintScriptEngine(
     CodeValidator,
     CodeFormatter,
     CodeLinter,
-    CodeExecutor {
+    CodeExecutor,
+    InteractiveExecutor {
     override val name: String = "printscript"
     override val versions: List<String> = listOf("1.0", "1.1")
 
@@ -52,6 +56,17 @@ class PrintScriptEngine(
         version: String,
         inputs: List<String>,
     ): LanguageResult<ExecutionReport> = LanguageResult.Success(m_runner.execute(code, version, inputs))
+
+    override fun firstSourceError(
+        code: String,
+        version: String,
+    ): Diagnostic? = m_runner.validate(code, version).diagnostics.firstOrNull()
+
+    override fun run(
+        code: String,
+        version: String,
+        io: ExecutionIO,
+    ): Diagnostic? = m_runner.run(code, version, io)
 
     private fun <T> withRules(block: () -> T): LanguageResult<T> =
         try {

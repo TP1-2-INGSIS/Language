@@ -94,6 +94,7 @@ src/main/kotlin/ingsis/language/
 | `POST` | `/languages/{lang}/format` | Formatea código según reglas de estilo |
 | `POST` | `/languages/{lang}/lint` | Valida código según reglas de linting |
 | `POST` | `/languages/{lang}/execute` | Ejecuta el código con una lista de inputs y devuelve salidas |
+| `WS` | `/languages/{lang}/run` | Ejecución interactiva (ver protocolo abajo) |
 | `POST` | `/languages/{lang}/test` | Ejecuta un caso de prueba y reporta `passed: Boolean` y outputs |
 
 ---
@@ -124,6 +125,24 @@ Para EXECUTE/TEST: error lexer, parser o semantic => `INVALID_SOURCE`; error de 
 Contrato de mensajes (`TaskEvent` / `TaskResultEvent`, `status` = `OK` | `INVALID_SOURCE` | `FAILED`, `contentHash`, `attempts`) y semántica de reintentos: ver `language-service.md`, sección "Worker asíncrono".
 
 ---
+
+### Ejecución interactiva por WebSocket (`/languages/{lang}/run`)
+WebSocket para correr un programa con `println` y `readInput` en vivo. Activo cuando la API web lo está (`APP_MODE=web` o `all`). Mensajes JSON de texto. Lo consume Snippets (relay para la UI), por la red interna: `ws://language-service:8080/languages/{lang}/run`.
+
+| Dirección | Mensaje | Cuándo |
+|---|---|---|
+| cliente → servidor | `{"type":"start","content":"…","version":"1.1","env":{"K":"V"}}` | Primer mensaje (`env` opcional) |
+| cliente → servidor | `{"type":"input","value":"…"}` | Respuesta a un `input-request` |
+| cliente → servidor | `{"type":"stop"}` | Cancela la ejecución |
+| servidor → cliente | `{"type":"output","value":"…"}` | En cada `println`, al momento |
+| servidor → cliente | `{"type":"input-request","prompt":"…"}` | En cada `readInput`; el programa queda bloqueado |
+| servidor → cliente | `{"type":"finished"}` | Fin normal; luego se cierra con 1000 |
+| servidor → cliente | `{"type":"error","message":"…","line":1,"column":1}` | Lenguaje/versión desconocidos, error de sintaxis o de runtime, timeout, `"busy"`; `line`/`column` solo si se conocen. Luego se cierra |
+
+* El código se valida antes de ejecutarse: un error de sintaxis o semántico produce `error` sin ningún `output`.
+* **Timeouts:** `EXECUTION_INPUT_TIMEOUT` segundos esperando un `input` (default 60) y 5 minutos de ejecución total (`EXECUTION_MAX_DURATION`, segundos, default 300). Al vencer se manda `error` y se cierra.
+* **Concurrencia:** cada sesión corre en su propio hilo de un pool acotado (`EXECUTION_MAX_SESSIONS`, default 8). Si está lleno: `error` con mensaje `busy` y cierre.
+* `stop` o la desconexión del cliente interrumpen el hilo de ejecución. Un programa que hace un loop sin I/O no se puede interrumpir, pero la sesión igual se cierra al vencer el límite total.
 
 ## 4.1 Motor PrintScript (CNC)
 

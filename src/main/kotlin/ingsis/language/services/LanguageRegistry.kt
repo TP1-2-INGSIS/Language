@@ -4,6 +4,7 @@ import ingsis.language.domain.engine.CodeExecutor
 import ingsis.language.domain.engine.CodeFormatter
 import ingsis.language.domain.engine.CodeLinter
 import ingsis.language.domain.engine.CodeValidator
+import ingsis.language.domain.engine.InteractiveExecutor
 import ingsis.language.domain.engine.LanguageEngine
 import ingsis.language.domain.model.DomainError
 import ingsis.language.domain.model.Language
@@ -75,6 +76,17 @@ class LanguageRegistry(
             val executor =
                 engine as? CodeExecutor
                     ?: return@flatMap LanguageResult.Failure(DomainError.CapabilityNotSupported(name, "execute"))
+            LanguageResult.Success(executor)
+        }
+
+    fun getInteractiveExecutor(
+        name: String,
+        version: String,
+    ): LanguageResult<InteractiveExecutor> =
+        getEngine(name, version).flatMap { engine ->
+            val executor =
+                engine as? InteractiveExecutor
+                    ?: return@flatMap LanguageResult.Failure(DomainError.CapabilityNotSupported(name, "run"))
             LanguageResult.Success(executor)
         }
 }
