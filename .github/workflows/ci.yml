@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build:
     name: Build & Verify
@@ -25,4 +29,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run Linter & Tests
+        env:
+          # CNC (PrintScript engine) is resolved from GitHub Packages.
+          # GPR_TOKEN (PAT with read:packages) wins over the workflow token when it is defined.
+          GITHUB_ACTOR: ${{ github.actor }}
+          GPR_TOKEN: ${{ secrets.GPR_TOKEN || secrets.GITHUB_TOKEN }}
         run: ./gradlew check
