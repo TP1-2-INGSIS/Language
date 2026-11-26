@@ -7,8 +7,27 @@ plugins {
     jacoco
 }
 
+// Single source of truth for the PrintScript engine (CNC) version: gradle.properties (cncVersion),
+// overridable with -PcncVersion=X.Y.Z. It is also exposed at runtime as `engineVersion`.
+val cncVersion: String = (findProperty("cncVersion") as String?) ?: error("cncVersion is not defined")
+
 repositories {
+    // Local builds: `./gradlew -PuseMavenLocal=true ...` resolves CNC from ~/.m2 (publishToMavenLocal from a CNC checkout).
+    if (providers.gradleProperty("useMavenLocal").orNull == "true") {
+        mavenLocal()
+    }
     mavenCentral()
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/TP1-2-INGSIS/CNC")
+        credentials {
+            username = (findProperty("gpr.user") as String?) ?: System.getenv("GITHUB_ACTOR")
+            password = (findProperty("gpr.key") as String?) ?: System.getenv("GPR_TOKEN") ?: System.getenv("GITHUB_TOKEN")
+        }
+        content {
+            includeGroup("com.github.TP1-2-INGSIS")
+        }
+    }
 }
 
 dependencies {
@@ -17,6 +36,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
+    implementation("com.github.TP1-2-INGSIS:printscript:$cncVersion")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
@@ -85,6 +105,13 @@ tasks.jacocoTestCoverageVerification {
                 minimum = "0.8".toBigDecimal()
             }
         }
+    }
+}
+
+tasks.processResources {
+    inputs.property("cncVersion", cncVersion)
+    filesMatching("engine.properties") {
+        expand("cncVersion" to cncVersion)
     }
 }
 
