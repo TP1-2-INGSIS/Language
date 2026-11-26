@@ -10,4 +10,6 @@ data class TaskEvent(
     val rules: String = "{}",
     val inputs: List<String> = emptyList(),
     val expectedOutputs: List<String> = emptyList(),
+    /** SHA-256 (hex) of [content]; echoed back in the result so the consumer can discard stale results. */
+    val contentHash: String? = null,
 )

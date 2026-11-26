@@ -111,4 +111,22 @@ class CncPrintScriptRunnerTest {
 
         assertFalse(report.isValid)
     }
+
+    /**
+     * [LintDiagnostics] recovers the rule from the text of the plain-string warnings CNC returns. If a CNC
+     * bump rewords them, this test fails here instead of silently degrading every diagnostic to `lint` 1:1.
+     */
+    @Test
+    fun `CNC lint warning prefixes that LintDiagnostics relies on are unchanged`() {
+        val facade = cnc.printscript.PrintScriptEngine.from(cnc.printscript.PrintScriptVersion.from("1.1"))
+        val config = RuleConfigMapper.lintConfig(allLintRules)
+
+        fun warnings(code: String) = facade.lint(cnc.common.ContentManager.of(code), config)
+
+        assertTrue(warnings("let a: number = ;").single().startsWith("Syntax error: "), "syntax prefix")
+        assertTrue(warnings("let my_var: number = 1;").single().startsWith("La variable '"), "naming prefix")
+        assertTrue(warnings("println(1 + 2);").single().contains("'println'"), "println marker")
+        assertTrue(warnings("let a: string = readInput(\"a\" + \"b\");").single().contains("'readInput'"), "readInput marker")
+        assertTrue(Regex("""row (\d+), col (\d+)""").containsMatchIn(warnings("let a: number = ;").single()), "position format")
+    }
 }

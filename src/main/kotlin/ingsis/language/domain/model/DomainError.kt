@@ -29,6 +29,7 @@ sealed interface DomainError {
 
     data class InvalidSource(
         override val message: String,
+        val diagnostics: List<Diagnostic> = emptyList(),
     ) : DomainError {
         override val code: String = "INVALID_SOURCE"
     }

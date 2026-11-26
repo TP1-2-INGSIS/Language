@@ -31,7 +31,15 @@ class PrintScriptEngine(
         code: String,
         version: String,
         config: String,
-    ): LanguageResult<String> = withRules { m_runner.format(code, version, config) }
+    ): LanguageResult<String> {
+        val validation = m_runner.validate(code, version)
+        if (!validation.isValid) {
+            return LanguageResult.Failure(
+                DomainError.InvalidSource("El código fuente no es válido", validation.diagnostics),
+            )
+        }
+        return withRules { m_runner.format(code, version, config) }
+    }
 
     override fun lint(
         code: String,

@@ -66,7 +66,7 @@ src/main/kotlin/ingsis/language/
 │   └── LanguageRegistry.kt    # Selector dinámico de implementaciones de LanguageEngine
 │
 ├── worker/                    # Procesamiento asíncrono (Redis Streams)
-│   ├── RedisTaskWorker.kt     # Consumidor SmartLifecycle con Consumer Groups (XREADGROUP / XACK)
+│   ├── RedisTaskWorker.kt     # Consumidor SmartLifecycle tolerante a fallos (XREADGROUP, recuperación de pendientes, reclaim, XACK tras publicar)
 │   ├── TaskProcessor.kt       # Ruteo y procesamiento de tareas hacia los servicios
 │   └── events/                # DTOs de eventos (TaskEvent, TaskResultEvent, TaskType)
 │
@@ -106,6 +106,21 @@ Configurable mediante la variable de entorno `APP_MODE`:
 * `APP_MODE=worker`: Activa el consumidor de Redis Streams para procesar lotes masivos en segundo plano.
 * `APP_MODE=all` (Default): Activa tanto los endpoints HTTP como el consumidor de Redis Streams.
 
+### Variables del worker
+
+| Variable | Default | Descripción |
+|---|---|---|
+| `REDIS_URL` | `redis://localhost:6379` | Conexión a Redis |
+| `APP_MODE` | `all` | `web`, `worker` o `all` |
+| `REDIS_STREAM_TASKS` | `tasks:printscript` | Stream de entrada |
+| `REDIS_STREAM_RESULTS` | `tasks:results` | Stream de salida (`MAXLEN ~ 10000`) |
+| `REDIS_STREAM_GROUP` | `language-workers` | Consumer group (se crea con MKSTREAM si falta) |
+| `REDIS_STREAM_CONSUMER` | hostname | Nombre del consumer; único por réplica |
+| `REDIS_MAX_ATTEMPTS` | `3` | Entregas antes de publicar `FAILED` y hacer ACK |
+| `REDIS_CLAIM_IDLE_MS` | `60000` | Inactividad a partir de la cual se reclaman entradas de consumers caídos |
+
+Contrato de mensajes (`TaskEvent` / `TaskResultEvent`, `status` = `OK` | `INVALID_SOURCE` | `FAILED`, `contentHash`, `attempts`) y semántica de reintentos: ver `language-service.md`, sección "Worker asíncrono".
+
 ---
 
 ## 4.1 Motor PrintScript (CNC)
@@ -114,6 +129,8 @@ Configurable mediante la variable de entorno `APP_MODE`:
 
 * **Credenciales:** el build lee `GITHUB_ACTOR` + `GPR_TOKEN` (o `GITHUB_TOKEN`), o las propiedades `gpr.user` / `gpr.key`. En CI hace falta `permissions: packages: read` y que el paquete de CNC esté compartido con este repo (o un secret `GPR_TOKEN` con `read:packages`). En Docker se pasan como BuildKit secrets `gpr_user` y `gpr_token`.
 * **Build local sin token:** desde un checkout de CNC en el tag correspondiente, `./gradlew publishToMavenLocal -PreleaseVersion=<cncVersion>`, y luego `./gradlew -PuseMavenLocal=true check`.
+* **Hook de pre-push:** corre `./gradlew check`, que necesita resolver CNC. Sin token, hay que activar `useMavenLocal=true`: se puede dejar fijo en `~/.gradle/gradle.properties` (`useMavenLocal=true`) o exportar `ORG_GRADLE_PROJECT_useMavenLocal=true` al hacer `git push`. Con un token (`GPR_TOKEN` / `gpr.key`) no hace falta.
+* **Tests del worker:** usan Testcontainers (`redis:7-alpine`), así que necesitan Docker.
 * **Diagnósticos:** `{rule, message, line, column}` con línea y columna desde 1. CNC no informa posición en errores semánticos ni de runtime: en ese caso es `1:1`. `rule` es `lexer`, `parser`, `semantic`, `runtime`, `syntax` (lint sobre código inválido) o la key de la regla de lint violada.
 * **Ejecución:** los `inputs` se consumen en orden para `readInput` (si faltan, la ejecución termina con un diagnóstico `runtime`); los `println` se devuelven en `outputs`; el prompt de `readInput` no se incluye en `outputs`. `readEnv` lee de un mapa opcional (vacío por defecto), nunca del entorno del servidor. `PrintScriptRunner.run` recibe un `ExecutionIO` (lambdas) para reutilizarlo en ejecución interactiva.
 

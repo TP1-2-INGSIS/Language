@@ -10,6 +10,7 @@ import ingsis.language.services.ExecutionService
 import ingsis.language.services.LanguageService
 import ingsis.language.services.TestingService
 import ingsis.language.worker.events.TaskEvent
+import ingsis.language.worker.events.TaskStatus
 import ingsis.language.worker.events.TaskType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -24,7 +25,7 @@ class TaskProcessorTest {
     private val processor = TaskProcessor(languageService, executionService, testingService)
 
     @Test
-    fun `process VALIDATE success returns result with errors`() {
+    fun `process VALIDATE of invalid code returns INVALID_SOURCE with diagnostics`() {
         val diagnostics = listOf(Diagnostic("ERR", "Msg", 1, 1))
         Mockito
             .`when`(languageService.validate("printscript", "1.1", "let a = 1"))
@@ -38,14 +39,77 @@ class TaskProcessorTest {
                 language = "printscript",
                 version = "1.1",
                 content = "let a = 1",
+                contentHash = "abc",
             )
         val result = processor.process(task)
 
+        assertEquals("abc", result.contentHash)
         assertEquals("t1", result.taskId)
         assertEquals("s1", result.snippetId)
         assertEquals(TaskType.VALIDATE, result.type)
-        assertTrue(result.success)
+        assertEquals(TaskStatus.INVALID_SOURCE, result.status)
+        assertFalse(result.success)
         assertEquals(diagnostics, result.errors)
+    }
+
+    @Test
+    fun `process VALIDATE of valid code returns OK without errors`() {
+        Mockito
+            .`when`(languageService.validate("printscript", "1.1", "let a: number = 1;"))
+            .thenReturn(LanguageResult.Success(ValidationReport(isValid = true)))
+
+        val result =
+            processor.process(
+                TaskEvent(type = TaskType.VALIDATE, language = "printscript", version = "1.1", content = "let a: number = 1;"),
+            )
+
+        assertEquals(TaskStatus.OK, result.status)
+        assertTrue(result.errors.isEmpty())
+    }
+
+    @Test
+    fun `process FORMAT of invalid code returns INVALID_SOURCE with diagnostics`() {
+        val diagnostics = listOf(Diagnostic("parser", "bad", 1, 1))
+        Mockito
+            .`when`(languageService.format("printscript", "1.1", "let", "{}"))
+            .thenReturn(LanguageResult.Failure(DomainError.InvalidSource("bad", diagnostics)))
+
+        val result = processor.process(TaskEvent(type = TaskType.FORMAT, language = "printscript", version = "1.1", content = "let"))
+
+        assertEquals(TaskStatus.INVALID_SOURCE, result.status)
+        assertEquals(diagnostics, result.errors)
+    }
+
+    @Test
+    fun `process LINT of code that does not parse returns INVALID_SOURCE`() {
+        val diagnostics = listOf(Diagnostic("syntax", "oops", 1, 1))
+        Mockito
+            .`when`(languageService.lint("printscript", "1.1", "let", "{}"))
+            .thenReturn(LanguageResult.Success(ValidationReport(isValid = false, diagnostics = diagnostics)))
+
+        val result = processor.process(TaskEvent(type = TaskType.LINT, language = "printscript", version = "1.1", content = "let"))
+
+        assertEquals(TaskStatus.INVALID_SOURCE, result.status)
+        assertEquals(diagnostics, result.errors)
+    }
+
+    @Test
+    fun `process EXECUTE with a compile error is INVALID_SOURCE and with a runtime error is OK`() {
+        val compile = Diagnostic("parser", "bad", 1, 1)
+        val runtime = Diagnostic("runtime", "boom", 1, 1)
+        Mockito
+            .`when`(executionService.execute("printscript", "1.1", "a", emptyList()))
+            .thenReturn(LanguageResult.Success(ExecutionReport(error = compile)))
+        Mockito
+            .`when`(executionService.execute("printscript", "1.1", "b", emptyList()))
+            .thenReturn(LanguageResult.Success(ExecutionReport(error = runtime)))
+
+        val a = processor.process(TaskEvent(type = TaskType.EXECUTE, language = "printscript", version = "1.1", content = "a"))
+        val b = processor.process(TaskEvent(type = TaskType.EXECUTE, language = "printscript", version = "1.1", content = "b"))
+
+        assertEquals(TaskStatus.INVALID_SOURCE, a.status)
+        assertEquals(TaskStatus.OK, b.status)
+        assertEquals(listOf(runtime), b.errors)
     }
 
     @Test
@@ -66,6 +130,7 @@ class TaskProcessorTest {
         val result = processor.process(task)
 
         assertFalse(result.success)
+        assertEquals(TaskStatus.FAILED, result.status)
         assertEquals("Lenguaje no soportado: unknown", result.errorMessage)
     }
 
@@ -110,6 +175,7 @@ class TaskProcessorTest {
         val result = processor.process(task)
 
         assertFalse(result.success)
+        assertEquals(TaskStatus.FAILED, result.status)
         assertEquals("Lenguaje no soportado: unknown", result.errorMessage)
     }
 
@@ -155,6 +221,7 @@ class TaskProcessorTest {
         val result = processor.process(task)
 
         assertFalse(result.success)
+        assertEquals(TaskStatus.FAILED, result.status)
         assertEquals("Lenguaje no soportado: unknown", result.errorMessage)
     }
 
@@ -199,6 +266,7 @@ class TaskProcessorTest {
         val result = processor.process(task)
 
         assertFalse(result.success)
+        assertEquals(TaskStatus.FAILED, result.status)
         assertEquals("Lenguaje no soportado: unknown", result.errorMessage)
     }
 
@@ -245,6 +313,7 @@ class TaskProcessorTest {
         val result = processor.process(task)
 
         assertFalse(result.success)
+        assertEquals(TaskStatus.FAILED, result.status)
         assertEquals("Lenguaje no soportado: unknown", result.errorMessage)
     }
 }

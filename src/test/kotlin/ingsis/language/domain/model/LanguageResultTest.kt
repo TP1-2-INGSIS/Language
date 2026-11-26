@@ -59,6 +59,21 @@ class LanguageResultTest {
     }
 
     @Test
+    fun `InvalidSource response carries the syntax diagnostics`() {
+        val response = DomainError.InvalidSource("bad", listOf(Diagnostic("parser", "oops", 2, 3))).toResponse()
+
+        val body = response.body as ingsis.language.resources.dtos.ErrorResponse
+        assertEquals("INVALID_SOURCE", body.error)
+        assertEquals(
+            listOf(
+                ingsis.language.resources.dtos
+                    .DiagnosticResponse("parser", "oops", 2, 3),
+            ),
+            body.diagnostics,
+        )
+    }
+
+    @Test
     fun `toResponse on success builds HTTP 200 with transformed body`() {
         val success = LanguageResult.Success("hello")
         val response = success.toResponse { it.uppercase() }
