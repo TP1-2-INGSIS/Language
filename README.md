@@ -108,6 +108,40 @@ Configurable mediante la variable de entorno `APP_MODE`:
 
 ---
 
+## 4.1 Motor PrintScript (CNC)
+
+`CncPrintScriptRunner` usa el motor CNC (`com.github.TP1-2-INGSIS:printscript`, GitHub Packages) para validate / lint / format / execute / test de PrintScript 1.0 y 1.1. La versión del motor sale de `cncVersion` en `gradle.properties` (única fuente de verdad) y se publica como `engineVersion` en cada elemento de `GET /languages`.
+
+* **Credenciales:** el build lee `GITHUB_ACTOR` + `GPR_TOKEN` (o `GITHUB_TOKEN`), o las propiedades `gpr.user` / `gpr.key`. En CI hace falta `permissions: packages: read` y que el paquete de CNC esté compartido con este repo (o un secret `GPR_TOKEN` con `read:packages`). En Docker se pasan como BuildKit secrets `gpr_user` y `gpr_token`.
+* **Build local sin token:** desde un checkout de CNC en el tag correspondiente, `./gradlew publishToMavenLocal -PreleaseVersion=<cncVersion>`, y luego `./gradlew -PuseMavenLocal=true check`.
+* **Diagnósticos:** `{rule, message, line, column}` con línea y columna desde 1. CNC no informa posición en errores semánticos ni de runtime: en ese caso es `1:1`. `rule` es `lexer`, `parser`, `semantic`, `runtime`, `syntax` (lint sobre código inválido) o la key de la regla de lint violada.
+* **Ejecución:** los `inputs` se consumen en orden para `readInput` (si faltan, la ejecución termina con un diagnóstico `runtime`); los `println` se devuelven en `outputs`; el prompt de `readInput` no se incluye en `outputs`. `readEnv` lee de un mapa opcional (vacío por defecto), nunca del entorno del servidor. `PrintScriptRunner.run` recibe un `ExecutionIO` (lambdas) para reutilizarlo en ejecución interactiva.
+
+### Keys de reglas aceptadas
+
+Las keys desconocidas se ignoran; si `rules` no es un objeto JSON, responde 400 `INVALID_RULES`.
+
+| Operación | Key | Tipo |
+|---|---|---|
+| lint | `identifierFormat` (alias `identifier_format`) | string: `"camel case"` o `"snake case"` |
+| lint | `mandatory-variable-or-literal-in-println` | boolean |
+| lint | `mandatory-variable-or-literal-in-readInput` | boolean |
+| format | `enforce-spacing-before-colon-in-declaration` | boolean (`true` activa la regla; `false` no hace nada) |
+| format | `enforce-spacing-after-colon-in-declaration` | boolean |
+| format | `enforce-spacing-around-equals` | boolean |
+| format | `enforce-no-spacing-around-equals` | boolean |
+| format | `mandatory-single-space-separation` | boolean |
+| format | `mandatory-space-surrounding-operations` | boolean |
+| format | `mandatory-line-break-after-statement` | boolean |
+| format | `line-breaks-after-println` | integer |
+| format | `indent-inside-braces` (alias `indent-inside-if`) | integer |
+| format | `if-brace-below-line` (1.1) | boolean |
+| format | `if-brace-same-line` (1.1) | boolean |
+
+CNC aplica una sola regla "de estructura" por llamada; Language las ejecuta en pasadas sucesivas (espaciado + `line-breaks-after-println`, salto por sentencia, llave del if, indentación) para que se puedan combinar.
+
+---
+
 ## 5. Desarrollo y Comandos Útiles
 
 ```bash
