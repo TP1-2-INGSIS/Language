@@ -1,0 +1,23 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+# Igual al default de ktlint, explícito (no es una regla propia); en sync con detekt MaxLineLength.
+max_line_length = 140
+# Igual al default, explícito (no es una regla propia).
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+# CUSTOM 1 (regla propia de ktlint): deshabilitada, ktlint_official la activa por defecto; fuerza reformateos en cadenas Spring/Redis.
+ktlint_standard_multiline-expression-wrapping = disabled
+# CUSTOM 2 (regla propia de ktlint): deshabilitada, activa por defecto; molesta en raw strings sin mejorar la lectura.
+ktlint_standard_string-template-indent = disabled
+
+[*.{yml,yaml,json,md}]
+indent_size = 2

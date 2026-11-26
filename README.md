@@ -163,7 +163,11 @@ CNC aplica una sola regla "de estructura" por llamada; Language las ejecuta en p
 # Auto-formatear código automáticamente (Ktlint)
 ./gradlew ktlintFormat
 
-# Chequeo completo (ktlint + tests + jacoco - lo mismo que corre en CI)
+# Análisis estático (detekt) y regeneración del baseline
+./gradlew detekt
+./gradlew detektBaseline
+
+# Chequeo completo (ktlint + detekt + tests + jacoco - lo mismo que corre en CI)
 ./gradlew check
 
 # Configurar Git hooks (.githooks/)
@@ -172,3 +176,21 @@ CNC aplica una sola regla "de estructura" por llamada; Language las ejecuta en p
 # Compilar empaquetado ejecutable para producción (Boot JAR)
 ./gradlew bootJar
 ```
+
+### 5.1 Herramientas de calidad
+
+Todo corre dentro de `./gradlew check`; los hooks versionados en `.githooks/` (`pre-commit`: ktlintFormat + ktlintCheck, `pre-push`: `check`) se instalan con `./gradlew installGitHooks`.
+
+**ktlint** (1.5.0) se configura en `.editorconfig`. Reglas propias (habilitadas por defecto, acá deshabilitadas):
+1. `ktlint_standard_multiline-expression-wrapping = disabled`
+2. `ktlint_standard_string-template-indent = disabled`
+
+(`max_line_length = 140` y las trailing commas figuran explícitas pero son iguales al default.)
+
+**detekt** (`dev.detekt` 2.0.0-alpha.6, se usa la línea 2.0 alpha porque 1.23.8, la última estable, es anterior a Kotlin 2.4; no se probó 1.23.x en este repo) se configura en `config/detekt/detekt.yml` (default + cambios comentados). Reglas propias:
+1. `MaxLineLength.maxLineLength = 140` (default 120).
+2. `TooManyFunctions.allowedFunctionsPerClass = 15` (default 11).
+3. `ConstructorParameterNaming.privateParameterPattern` acepta el prefijo `m_` usado por el equipo.
+
+Los hallazgos preexistentes están en `config/detekt/detekt-baseline.xml`; el código nuevo se analiza completo. Ojo: la entrada `TooGenericExceptionCaught:RedisTaskWorker.kt:RedisTaskWorker$e: Exception` cubre tres sitios de catch, por lo que nuevos catch genéricos en esa clase quedan permitidos; limpiar después del PR del worker.
+

@@ -1,0 +1,12 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MagicNumber:RedisTaskWorker.kt:RedisTaskWorker$1000</ID>
+    <ID>ReturnCount:LanguageRegistry.kt:LanguageRegistry$fun getEngine: LanguageResult&lt;LanguageEngine&gt;</ID>
+    <ID>SwallowedException:RuleConfigMapper.kt:RuleConfigMapper$e: tools.jackson.core.JacksonException</ID>
+    <ID>TooGenericExceptionCaught:CncPrintScriptRunner.kt:CncPrintScriptRunner$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:RedisTaskWorker.kt:RedisTaskWorker$e: Exception</ID>
+    <ID>UnusedParameter:GlobalExceptionHandler.kt:GlobalExceptionHandler$ex: HttpMessageNotReadableException</ID>
+  </CurrentIssues>
+</SmellBaseline>
