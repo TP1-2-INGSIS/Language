@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Protocol: the client sends `start`, then optionally `input` / `stop`; the server sends `output`,
  * `input-request`, `finished` and `error`. Each session runs on its own thread taken from a bounded pool.
  */
+@Suppress("TooGenericExceptionCaught") // session boundary: any failure must reach the client as an error message
 @Component
 @ConditionalOnExpression("!'\${ingsis.app.mode:all}'.equalsIgnoreCase('worker')")
 class ExecutionWebSocketHandler(
