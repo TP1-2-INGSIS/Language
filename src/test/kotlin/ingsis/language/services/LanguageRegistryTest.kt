@@ -9,23 +9,19 @@ import ingsis.language.domain.model.DomainError
 import ingsis.language.domain.model.ExecutionReport
 import ingsis.language.domain.model.LanguageResult
 import ingsis.language.domain.model.ValidationReport
-import jakarta.enterprise.inject.Instance
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockito.Mockito
 
 class LanguageRegistryTest {
-    private val mockInstance = Mockito.mock(Instance::class.java)
-    private lateinit var registry: LanguageRegistry
-
     private val fakeEngines =
         listOf(
             FakeCompleteEngine("dummy-lang", listOf("1.0", "1.1")),
             FakeEmptyEngine("other-lang", listOf("2.0")),
         )
+
+    private val registry = LanguageRegistry(fakeEngines)
 
     private class FakeCompleteEngine(
         override val name: String,
@@ -63,13 +59,6 @@ class LanguageRegistryTest {
         override val name: String,
         override val versions: List<String>,
     ) : LanguageEngine
-
-    @BeforeEach
-    @Suppress("UNCHECKED_CAST")
-    fun setUp() {
-        Mockito.`when`(mockInstance.iterator()).thenAnswer { fakeEngines.iterator() }
-        registry = LanguageRegistry(mockInstance as Instance<LanguageEngine>)
-    }
 
     @Test
     fun `getAllLanguages maps all registered engines`() {

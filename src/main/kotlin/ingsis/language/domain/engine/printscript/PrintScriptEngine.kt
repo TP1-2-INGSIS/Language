@@ -8,9 +8,7 @@ import ingsis.language.domain.engine.LanguageEngine
 import ingsis.language.domain.model.ExecutionReport
 import ingsis.language.domain.model.LanguageResult
 import ingsis.language.domain.model.ValidationReport
-import jakarta.enterprise.context.ApplicationScoped
 
-@ApplicationScoped
 class PrintScriptEngine(
     private val m_runner: PrintScriptRunner,
 ) : LanguageEngine,

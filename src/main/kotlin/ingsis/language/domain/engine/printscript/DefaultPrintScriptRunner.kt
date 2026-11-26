@@ -2,9 +2,7 @@ package ingsis.language.domain.engine.printscript
 
 import ingsis.language.domain.model.ExecutionReport
 import ingsis.language.domain.model.ValidationReport
-import jakarta.enterprise.context.ApplicationScoped
 
-@ApplicationScoped
 class DefaultPrintScriptRunner : PrintScriptRunner {
     override fun validate(
         code: String,

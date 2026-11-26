@@ -43,19 +43,19 @@ class LanguageResultTest {
     @Test
     fun `domain errors map to appropriate HTTP status codes`() {
         val notFound = DomainError.LanguageNotFound("abc").toResponse()
-        assertEquals(404, notFound.status)
+        assertEquals(404, notFound.statusCode.value())
 
         val unsupportedVersion = DomainError.UnsupportedVersion("abc", "1.0").toResponse()
-        assertEquals(400, unsupportedVersion.status)
+        assertEquals(400, unsupportedVersion.statusCode.value())
 
         val invalidRules = DomainError.InvalidRules("bad json").toResponse()
-        assertEquals(400, invalidRules.status)
+        assertEquals(400, invalidRules.statusCode.value())
 
         val notImplemented = DomainError.CapabilityNotSupported("abc", "test").toResponse()
-        assertEquals(501, notImplemented.status)
+        assertEquals(501, notImplemented.statusCode.value())
 
         val invalidSource = DomainError.InvalidSource("syntax error").toResponse()
-        assertEquals(422, invalidSource.status)
+        assertEquals(422, invalidSource.statusCode.value())
     }
 
     @Test
@@ -63,12 +63,12 @@ class LanguageResultTest {
         val success = LanguageResult.Success("hello")
         val response = success.toResponse { it.uppercase() }
 
-        assertEquals(200, response.status)
-        assertEquals("HELLO", response.entity)
+        assertEquals(200, response.statusCode.value())
+        assertEquals("HELLO", response.body)
 
         val directResponse = success.toResponse()
-        assertEquals(200, directResponse.status)
-        assertEquals("hello", directResponse.entity)
+        assertEquals(200, directResponse.statusCode.value())
+        assertEquals("hello", directResponse.body)
     }
 
     @Test
@@ -76,6 +76,6 @@ class LanguageResultTest {
         val failure: LanguageResult<String> = LanguageResult.Failure(DomainError.LanguageNotFound("missing"))
         val response = failure.toResponse { it.uppercase() }
 
-        assertEquals(404, response.status)
+        assertEquals(404, response.statusCode.value())
     }
 }

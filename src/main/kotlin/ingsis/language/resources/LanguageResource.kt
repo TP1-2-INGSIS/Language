@@ -1,6 +1,5 @@
 package ingsis.language.resources
 
-import com.fasterxml.jackson.databind.JsonNode
 import ingsis.language.resources.dtos.ErrorResponse
 import ingsis.language.resources.dtos.ExecuteRequest
 import ingsis.language.resources.dtos.ExecutionResponse
@@ -14,30 +13,30 @@ import ingsis.language.resources.dtos.TestResponse
 import ingsis.language.resources.dtos.ValidateRequest
 import ingsis.language.resources.dtos.ValidateResponse
 import ingsis.language.services.LanguageService
-import jakarta.ws.rs.Consumes
-import jakarta.ws.rs.GET
-import jakarta.ws.rs.POST
-import jakarta.ws.rs.Path
-import jakarta.ws.rs.PathParam
-import jakarta.ws.rs.Produces
-import jakarta.ws.rs.core.MediaType
-import jakarta.ws.rs.core.Response
+import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
+import tools.jackson.databind.JsonNode
 
-@Path("/languages")
-@Produces(MediaType.APPLICATION_JSON)
+@RestController
+@RequestMapping("/languages", produces = [MediaType.APPLICATION_JSON_VALUE])
 class LanguageResource(
     private val m_service: LanguageService,
 ) {
-    @GET
-    fun language(): Response = m_service.getAllLanguages().toResponse { it.map(::LanguageResponse) }
+    @GetMapping
+    fun language(): ResponseEntity<Any> = m_service.getAllLanguages().toResponse { it.map(::LanguageResponse) }
 
-    @POST
-    @Path("/{lang}/validate")
-    @Consumes(MediaType.APPLICATION_JSON)
+    @PostMapping("/{lang}/validate", consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun validate(
-        @PathParam("lang") lang: String,
-        request: ValidateRequest?,
-    ): Response {
+        @PathVariable("lang") lang: String,
+        @RequestBody(required = false) request: ValidateRequest?,
+    ): ResponseEntity<Any> {
         validateRequest(request?.version)?.let { return it }
 
         return m_service
@@ -45,13 +44,11 @@ class LanguageResource(
             .toResponse(::ValidateResponse)
     }
 
-    @POST
-    @Path("/{lang}/format")
-    @Consumes(MediaType.APPLICATION_JSON)
+    @PostMapping("/{lang}/format", consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun format(
-        @PathParam("lang") lang: String,
-        request: FormatRequest?,
-    ): Response {
+        @PathVariable("lang") lang: String,
+        @RequestBody(required = false) request: FormatRequest?,
+    ): ResponseEntity<Any> {
         validateRequest(request?.version)?.let { return it }
 
         return m_service
@@ -59,13 +56,11 @@ class LanguageResource(
             .toResponse(::FormatResponse)
     }
 
-    @POST
-    @Path("/{lang}/lint")
-    @Consumes(MediaType.APPLICATION_JSON)
+    @PostMapping("/{lang}/lint", consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun lint(
-        @PathParam("lang") lang: String,
-        request: LintRequest?,
-    ): Response {
+        @PathVariable("lang") lang: String,
+        @RequestBody(required = false) request: LintRequest?,
+    ): ResponseEntity<Any> {
         validateRequest(request?.version)?.let { return it }
 
         return m_service
@@ -73,13 +68,11 @@ class LanguageResource(
             .toResponse(::LintResponse)
     }
 
-    @POST
-    @Path("/{lang}/execute")
-    @Consumes(MediaType.APPLICATION_JSON)
+    @PostMapping("/{lang}/execute", consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun execute(
-        @PathParam("lang") lang: String,
-        request: ExecuteRequest?,
-    ): Response {
+        @PathVariable("lang") lang: String,
+        @RequestBody(required = false) request: ExecuteRequest?,
+    ): ResponseEntity<Any> {
         validateRequest(request?.version)?.let { return it }
 
         return m_service
@@ -87,13 +80,11 @@ class LanguageResource(
             .toResponse(::ExecutionResponse)
     }
 
-    @POST
-    @Path("/{lang}/test")
-    @Consumes(MediaType.APPLICATION_JSON)
+    @PostMapping("/{lang}/test", consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun test(
-        @PathParam("lang") lang: String,
-        request: TestRequest?,
-    ): Response {
+        @PathVariable("lang") lang: String,
+        @RequestBody(required = false) request: TestRequest?,
+    ): ResponseEntity<Any> {
         validateRequest(request?.version)?.let { return it }
 
         return m_service
@@ -101,12 +92,11 @@ class LanguageResource(
             .toResponse(::TestResponse)
     }
 
-    private fun validateRequest(version: String?): Response? =
+    private fun validateRequest(version: String?): ResponseEntity<Any>? =
         if (version.isNullOrBlank()) {
-            Response
-                .status(Response.Status.BAD_REQUEST)
-                .entity(ErrorResponse(error = "BAD_REQUEST", message = "Faltan campos obligatorios"))
-                .build()
+            ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse(error = "BAD_REQUEST", message = "Faltan campos obligatorios"))
         } else {
             null
         }

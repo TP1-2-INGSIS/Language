@@ -7,9 +7,9 @@ import ingsis.language.services.TestingService
 import ingsis.language.worker.events.TaskEvent
 import ingsis.language.worker.events.TaskResultEvent
 import ingsis.language.worker.events.TaskType
-import jakarta.enterprise.context.ApplicationScoped
+import org.springframework.stereotype.Component
 
-@ApplicationScoped
+@Component
 class TaskProcessor(
     private val m_languageService: LanguageService,
     private val m_executionService: ExecutionService,

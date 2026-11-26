@@ -1,47 +1,35 @@
 plugins {
     kotlin("jvm") version "2.4.10"
-    kotlin("plugin.allopen") version "2.4.10"
-    id("io.quarkus")
+    kotlin("plugin.spring") version "2.4.10"
+    id("org.springframework.boot") version "4.1.2"
+    id("io.spring.dependency-management") version "1.1.7"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
     jacoco
 }
 
 repositories {
     mavenCentral()
-    mavenLocal()
 }
-
-val quarkusPlatformGroupId: String = providers.gradleProperty("quarkusPlatformGroupId").get()
-val quarkusPlatformArtifactId: String = providers.gradleProperty("quarkusPlatformArtifactId").get()
-val quarkusPlatformVersion: String = providers.gradleProperty("quarkusPlatformVersion").get()
 
 dependencies {
-    implementation(enforcedPlatform("$quarkusPlatformGroupId:$quarkusPlatformArtifactId:$quarkusPlatformVersion"))
-    implementation("io.quarkus:quarkus-kotlin")
-    implementation("io.quarkus:quarkus-rest-jackson")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-    implementation("io.quarkus:quarkus-arc")
-    implementation("io.quarkus:quarkus-rest")
-    implementation("io.quarkus:quarkus-redis-client")
-    testImplementation("io.quarkus:quarkus-junit")
-    testImplementation("io.quarkus:quarkus-junit5-mockito")
-    testImplementation("io.quarkus:quarkus-jacoco")
-    testImplementation("io.rest-assured:rest-assured")
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("tools.jackson.module:jackson-module-kotlin")
+    implementation("org.jetbrains.kotlin:kotlin-reflect")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-group = "org.acme"
+group = "ingsis"
 version = "1.0.0-SNAPSHOT"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
-}
-
-allOpen {
-    annotation("jakarta.ws.rs.Path")
-    annotation("jakarta.enterprise.context.ApplicationScoped")
-    annotation("jakarta.persistence.Entity")
-    annotation("io.quarkus.test.junit.QuarkusTest")
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
 }
 
 kotlin {
@@ -49,6 +37,7 @@ kotlin {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
         javaParameters = true
         allWarningsAsErrors = true
+        freeCompilerArgs.add("-Xjsr305=strict")
     }
 }
 
@@ -76,15 +65,8 @@ jacoco {
 }
 
 tasks.withType<Test> {
+    useJUnitPlatform()
     finalizedBy(tasks.jacocoTestReport)
-    configure<JacocoTaskExtension> {
-        excludeClassLoaders = listOf("*QuarkusClassLoader")
-        destinationFile =
-            layout.buildDirectory
-                .file("jacoco-quarkus.exec")
-                .get()
-                .asFile
-    }
 }
 
 tasks.jacocoTestReport {
@@ -104,6 +86,14 @@ tasks.jacocoTestCoverageVerification {
             }
         }
     }
+}
+
+tasks.jar {
+    enabled = false
+}
+
+tasks.bootJar {
+    archiveFileName.set("app.jar")
 }
 
 tasks.check {

@@ -5,9 +5,9 @@ import ingsis.language.domain.model.LanguageResult
 import ingsis.language.domain.model.Languages
 import ingsis.language.domain.model.TestReport
 import ingsis.language.domain.model.ValidationReport
-import jakarta.enterprise.context.ApplicationScoped
+import org.springframework.stereotype.Service
 
-@ApplicationScoped
+@Service
 class LanguageService(
     private val m_registry: LanguageRegistry,
     private val m_executionService: ExecutionService,

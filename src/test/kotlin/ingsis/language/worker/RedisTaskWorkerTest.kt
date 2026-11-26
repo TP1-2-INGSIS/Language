@@ -1,16 +1,8 @@
 package ingsis.language.worker
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import ingsis.language.worker.events.TaskEvent
 import ingsis.language.worker.events.TaskResultEvent
 import ingsis.language.worker.events.TaskType
-import io.quarkus.redis.datasource.RedisDataSource
-import io.quarkus.redis.datasource.stream.StreamCommands
-import io.quarkus.redis.datasource.stream.StreamMessage
-import io.quarkus.redis.datasource.stream.XGroupCreateArgs
-import io.quarkus.redis.datasource.stream.XReadGroupArgs
-import io.quarkus.runtime.ShutdownEvent
-import io.quarkus.runtime.StartupEvent
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -19,97 +11,70 @@ import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito
+import org.springframework.data.redis.connection.stream.Consumer
+import org.springframework.data.redis.connection.stream.ReadOffset
+import org.springframework.data.redis.connection.stream.RecordId
+import org.springframework.data.redis.connection.stream.StreamOffset
+import org.springframework.data.redis.connection.stream.StreamReadOptions
+import org.springframework.data.redis.connection.stream.StreamRecords
+import org.springframework.data.redis.core.StreamOperations
+import org.springframework.data.redis.core.StringRedisTemplate
+import tools.jackson.databind.json.JsonMapper
 
 class RedisTaskWorkerTest {
-    private val redisDataSource = Mockito.mock(RedisDataSource::class.java)
+    private val redisTemplate = Mockito.mock(StringRedisTemplate::class.java)
 
     @Suppress("UNCHECKED_CAST")
-    private val streamCommands = Mockito.mock(StreamCommands::class.java) as StreamCommands<String, String, String>
+    private val streamOps = Mockito.mock(StreamOperations::class.java) as StreamOperations<String, String, String>
     private val taskProcessor = Mockito.mock(TaskProcessor::class.java)
-    private val objectMapper = ObjectMapper()
+    private val objectMapper = JsonMapper.builder().findAndAddModules().build()
 
     @BeforeEach
     fun setUp() {
-        Mockito.`when`(redisDataSource.stream(String::class.java)).thenReturn(streamCommands)
+        Mockito.`when`(redisTemplate.opsForStream<String, String>()).thenReturn(streamOps)
     }
 
     @Test
-    fun `onStart does nothing when appMode is web`() {
-        val worker =
-            RedisTaskWorker(
-                m_redisDataSource = redisDataSource,
-                m_taskProcessor = taskProcessor,
-                m_objectMapper = objectMapper,
-                m_appMode = "web",
-                m_tasksStream = "tasks:test",
-                m_resultsStream = "results:test",
-                m_consumerGroup = "group-1",
-                m_consumerName = "worker-1",
-            )
+    fun `start does nothing when appMode is web`() {
+        val worker = createWorker(appMode = "web")
 
-        worker.onStart(StartupEvent())
+        worker.start()
 
-        assertFalse(worker.isRunning())
+        assertFalse(worker.isRunning)
     }
 
     @Test
-    fun `initConsumerGroup calls xgroupCreate with mkstream`() {
-        val worker =
-            RedisTaskWorker(
-                m_redisDataSource = redisDataSource,
-                m_taskProcessor = taskProcessor,
-                m_objectMapper = objectMapper,
-                m_appMode = "worker",
-                m_tasksStream = "tasks:test",
-                m_resultsStream = "results:test",
-                m_consumerGroup = "group-1",
-                m_consumerName = "worker-1",
-            )
+    fun `initConsumerGroup calls createGroup with offset 0`() {
+        val worker = createWorker(appMode = "worker")
 
         worker.initConsumerGroup()
 
-        Mockito.verify(streamCommands).xgroupCreate(eq("tasks:test"), eq("group-1"), eq("0"), any(XGroupCreateArgs::class.java))
+        Mockito.verify(streamOps).createGroup(eq("tasks:test"), eq(ReadOffset.from("0")), eq("group-1"))
     }
 
     @Test
     fun `initConsumerGroup handles exception gracefully when group exists`() {
         Mockito
-            .`when`(streamCommands.xgroupCreate(eq("tasks:test"), eq("group-1"), eq("0"), any(XGroupCreateArgs::class.java)))
+            .`when`(streamOps.createGroup(eq("tasks:test"), eq(ReadOffset.from("0")), eq("group-1")))
             .thenThrow(RuntimeException("BUSYGROUP Consumer Group name already exists"))
 
-        val worker =
-            RedisTaskWorker(
-                m_redisDataSource = redisDataSource,
-                m_taskProcessor = taskProcessor,
-                m_objectMapper = objectMapper,
-                m_appMode = "worker",
-                m_tasksStream = "tasks:test",
-                m_resultsStream = "results:test",
-                m_consumerGroup = "group-1",
-                m_consumerName = "worker-1",
-            )
+        val worker = createWorker(appMode = "worker")
 
         worker.initConsumerGroup()
-        // No exception thrown
     }
 
     @Test
     fun `pollAndProcess returns 0 when no messages`() {
         Mockito
-            .`when`(streamCommands.xreadgroup(eq("group-1"), eq("worker-1"), eq("tasks:test"), eq(">"), any(XReadGroupArgs::class.java)))
-            .thenReturn(emptyList())
+            .`when`(
+                streamOps.read(
+                    any(Consumer::class.java),
+                    any(StreamReadOptions::class.java),
+                    any<StreamOffset<String>>(),
+                ),
+            ).thenReturn(emptyList())
 
-        val worker =
-            RedisTaskWorker(
-                m_redisDataSource = redisDataSource,
-                m_taskProcessor = taskProcessor,
-                m_objectMapper = objectMapper,
-                m_appMode = "worker",
-                m_tasksStream = "tasks:test",
-                m_resultsStream = "results:test",
-                m_consumerGroup = "group-1",
-                m_consumerName = "worker-1",
-            )
+        val worker = createWorker(appMode = "worker")
 
         val processed = worker.pollAndProcess(batchSize = 5, blockMs = 100)
 
@@ -117,82 +82,76 @@ class RedisTaskWorkerTest {
     }
 
     @Test
-    fun `pollAndProcess processes message, writes result and sends xack`() {
+    fun `pollAndProcess processes message, writes result and sends acknowledge`() {
         val task = TaskEvent(taskId = "task-100", snippetId = "snip-1", type = TaskType.VALIDATE, language = "printscript", version = "1.1")
         val taskJson = objectMapper.writeValueAsString(task)
         val result = TaskResultEvent(taskId = "task-100", snippetId = "snip-1", type = TaskType.VALIDATE, success = true)
 
-        val message = StreamMessage("tasks:test", "msg-id-1", mapOf("data" to taskJson))
+        val recordId = RecordId.of("1-0")
+        val message = StreamRecords.string(mapOf("data" to taskJson)).withStreamKey("tasks:test").withId(recordId)
         Mockito
-            .`when`(streamCommands.xreadgroup(eq("group-1"), eq("worker-1"), eq("tasks:test"), eq(">"), any(XReadGroupArgs::class.java)))
-            .thenReturn(listOf(message))
+            .`when`(
+                streamOps.read(
+                    any(Consumer::class.java),
+                    any(StreamReadOptions::class.java),
+                    any<StreamOffset<String>>(),
+                ),
+            ).thenReturn(listOf(message))
         Mockito
             .`when`(taskProcessor.process(task))
             .thenReturn(result)
 
-        val worker =
-            RedisTaskWorker(
-                m_redisDataSource = redisDataSource,
-                m_taskProcessor = taskProcessor,
-                m_objectMapper = objectMapper,
-                m_appMode = "worker",
-                m_tasksStream = "tasks:test",
-                m_resultsStream = "results:test",
-                m_consumerGroup = "group-1",
-                m_consumerName = "worker-1",
-            )
+        val worker = createWorker(appMode = "worker")
 
         val processed = worker.pollAndProcess(batchSize = 5, blockMs = 100)
 
         assertEquals(1, processed)
-        Mockito.verify(streamCommands).xadd(eq("results:test"), eq(mapOf("data" to objectMapper.writeValueAsString(result))))
-        Mockito.verify(streamCommands).xack(eq("tasks:test"), eq("group-1"), eq("msg-id-1"))
+        Mockito.verify(streamOps).add(eq("results:test"), eq(mapOf("data" to objectMapper.writeValueAsString(result))))
+        Mockito.verify(streamOps).acknowledge(eq("tasks:test"), eq("group-1"), eq(recordId))
     }
 
     @Test
-    fun `pollAndProcess still sends xack on malformed message`() {
-        val message = StreamMessage("tasks:test", "msg-bad-1", mapOf("data" to "{ invalid json"))
+    fun `pollAndProcess still sends acknowledge on malformed message`() {
+        val recordId = RecordId.of("2-0")
+        val message = StreamRecords.string(mapOf("data" to "{ invalid json")).withStreamKey("tasks:test").withId(recordId)
         Mockito
-            .`when`(streamCommands.xreadgroup(eq("group-1"), eq("worker-1"), eq("tasks:test"), eq(">"), any(XReadGroupArgs::class.java)))
-            .thenReturn(listOf(message))
+            .`when`(
+                streamOps.read(
+                    any(Consumer::class.java),
+                    any(StreamReadOptions::class.java),
+                    any<StreamOffset<String>>(),
+                ),
+            ).thenReturn(listOf(message))
 
-        val worker =
-            RedisTaskWorker(
-                m_redisDataSource = redisDataSource,
-                m_taskProcessor = taskProcessor,
-                m_objectMapper = objectMapper,
-                m_appMode = "worker",
-                m_tasksStream = "tasks:test",
-                m_resultsStream = "results:test",
-                m_consumerGroup = "group-1",
-                m_consumerName = "worker-1",
-            )
+        val worker = createWorker(appMode = "worker")
 
         val processed = worker.pollAndProcess(batchSize = 5, blockMs = 100)
 
         assertEquals(1, processed)
-        Mockito.verify(streamCommands).xack(eq("tasks:test"), eq("group-1"), eq("msg-bad-1"))
+        Mockito.verify(streamOps).acknowledge(eq("tasks:test"), eq("group-1"), eq(recordId))
     }
 
     @Test
     fun `startWorkerLoop and stopWorkerLoop control running state`() {
-        val worker =
-            RedisTaskWorker(
-                m_redisDataSource = redisDataSource,
-                m_taskProcessor = taskProcessor,
-                m_objectMapper = objectMapper,
-                m_appMode = "worker",
-                m_tasksStream = "tasks:test",
-                m_resultsStream = "results:test",
-                m_consumerGroup = "group-1",
-                m_consumerName = "worker-1",
-            )
+        val worker = createWorker(appMode = "worker")
 
         worker.startWorkerLoop()
-        assertTrue(worker.isRunning())
+        assertTrue(worker.isRunning)
 
         worker.stopWorkerLoop()
-        assertFalse(worker.isRunning())
-        worker.onStop(ShutdownEvent())
+        assertFalse(worker.isRunning)
+        worker.stop()
     }
+
+    private fun createWorker(appMode: String): RedisTaskWorker =
+        RedisTaskWorker(
+            m_redisTemplate = redisTemplate,
+            m_taskProcessor = taskProcessor,
+            m_objectMapper = objectMapper,
+            m_appMode = appMode,
+            m_tasksStream = "tasks:test",
+            m_resultsStream = "results:test",
+            m_consumerGroup = "group-1",
+            m_consumerName = "worker-1",
+        )
 }
