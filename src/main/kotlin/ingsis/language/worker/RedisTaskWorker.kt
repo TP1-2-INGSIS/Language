@@ -20,8 +20,10 @@ import org.springframework.data.redis.connection.stream.StreamRecords
 import org.springframework.data.redis.core.StreamOperations
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
+import tools.jackson.core.JacksonException
 import tools.jackson.databind.ObjectMapper
 import java.net.InetAddress
+import java.net.UnknownHostException
 import java.time.Duration
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -49,7 +51,7 @@ class RedisTaskWorker(
     @Value("\${ingsis.redis.stream.group:language-workers}")
     private val m_consumerGroup: String,
     @Value("\${ingsis.redis.stream.consumer:}")
-    m_consumerName: String = "",
+    private val m_consumerName: String = "",
     @Value("\${ingsis.redis.max-attempts:3}")
     private val m_maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
     @Value("\${ingsis.redis.claim-idle-ms:60000}")
@@ -59,6 +61,7 @@ class RedisTaskWorker(
     private val running = AtomicBoolean(false)
     private var workerThread: Thread? = null
     private var lastReclaimAt = 0L
+    private val reclaimIntervalMs = (m_claimIdleMs / 2).coerceIn(MIN_RECLAIM_INTERVAL_MS, MAX_RECLAIM_INTERVAL_MS)
 
     @Volatile
     private var lastRecovered = 0
@@ -100,7 +103,7 @@ class RedisTaskWorker(
     ): Int {
         lastRecovered = recoverOwnPending(batchSize)
         var handled = lastRecovered
-        if (System.currentTimeMillis() - lastReclaimAt >= reclaimIntervalMs()) {
+        if (System.currentTimeMillis() - lastReclaimAt >= reclaimIntervalMs) {
             lastReclaimAt = System.currentTimeMillis()
             handled += reclaimIdle(batchSize)
         }
@@ -160,13 +163,13 @@ class RedisTaskWorker(
 
     private fun processMessage(msg: MapRecord<String, String, String>) {
         val dataStr = msg.value["data"] ?: msg.value["payload"]
-        val task = dataStr?.let(::parse)
+        val task = dataStr?.let { m_objectMapper.parseTask(it) }
         if (task == null) {
             log.error("Discarding unreadable message id '${msg.id}'")
             acknowledge(msg.id)
             return
         }
-        val attempts = deliveryCount(msg.id)
+        val attempts = streamOps.deliveryCount(m_tasksStream, m_consumerGroup, msg.id)
         if (attempts > m_maxAttempts) {
             publishFailure(msg.id, task, attempts, "Se agotaron los intentos ($m_maxAttempts)")
             return
@@ -184,14 +187,6 @@ class RedisTaskWorker(
             publishFailure(msg.id, task, attempts, "Falló tras $attempts intentos: ${e.message ?: e.javaClass.simpleName}")
         }
     }
-
-    private fun parse(data: String): TaskEvent? =
-        try {
-            m_objectMapper.readValue(data, TaskEvent::class.java)
-        } catch (e: Exception) {
-            log.error("Malformed task payload: ${e.message}")
-            null
-        }
 
     private fun publishFailure(
         id: RecordId,
@@ -224,14 +219,6 @@ class RedisTaskWorker(
     private fun acknowledge(id: RecordId) {
         streamOps.acknowledge(m_tasksStream, m_consumerGroup, id)
     }
-
-    /** Number of times Redis has delivered the entry (XPENDING), counting the current delivery. */
-    private fun deliveryCount(id: RecordId): Int {
-        val pending = streamOps.pending(m_tasksStream, m_consumerGroup, Range.just(id.value), 1L)
-        return pending.firstOrNull()?.totalDeliveryCount?.toInt() ?: 1
-    }
-
-    private fun reclaimIntervalMs(): Long = (m_claimIdleMs / 2).coerceIn(MIN_RECLAIM_INTERVAL_MS, MAX_RECLAIM_INTERVAL_MS)
 
     fun startWorkerLoop() {
         initConsumerGroup()
@@ -280,8 +267,23 @@ class RedisTaskWorker(
         private fun hostName(): String =
             try {
                 InetAddress.getLocalHost().hostName
-            } catch (e: Exception) {
+            } catch (_: UnknownHostException) {
                 System.getenv("HOSTNAME") ?: "worker-1"
             }
     }
 }
+
+private fun ObjectMapper.parseTask(data: String): TaskEvent? =
+    try {
+        readValue(data, TaskEvent::class.java)
+    } catch (e: JacksonException) {
+        LoggerFactory.getLogger(RedisTaskWorker::class.java).error("Malformed task payload: ${e.message}")
+        null
+    }
+
+/** Number of times Redis has delivered the entry (XPENDING), counting the current delivery. */
+private fun StreamOperations<String, String, String>.deliveryCount(
+    stream: String,
+    group: String,
+    id: RecordId,
+): Int = pending(stream, group, Range.just(id.value), 1L).firstOrNull()?.totalDeliveryCount?.toInt() ?: 1
