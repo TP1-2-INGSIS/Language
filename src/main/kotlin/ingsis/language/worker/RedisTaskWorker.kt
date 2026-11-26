@@ -3,6 +3,7 @@ package ingsis.language.worker
 import ingsis.language.worker.events.TaskEvent
 import ingsis.language.worker.events.TaskResultEvent
 import ingsis.language.worker.events.TaskStatus
+import ingsis.language.worker.events.TaskType
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.SmartLifecycle
@@ -92,7 +93,11 @@ class RedisTaskWorker(
         try {
             streamOps.createGroup(m_tasksStream, ReadOffset.from("0"), m_consumerGroup)
         } catch (e: Exception) {
-            log.debug("Consumer group '$m_consumerGroup' already exists or stream ready: ${e.message}")
+            if (e.message?.contains("BUSYGROUP") == true) {
+                log.debug("Consumer group '$m_consumerGroup' already exists: ${e.message}")
+            } else {
+                log.warn("Could not create consumer group '$m_consumerGroup' on '$m_tasksStream': ${e.message}")
+            }
         }
     }
 
@@ -165,7 +170,9 @@ class RedisTaskWorker(
         val dataStr = msg.value["data"] ?: msg.value["payload"]
         val task = dataStr?.let { m_objectMapper.parseTask(it) }
         if (task == null) {
-            log.error("Discarding unreadable message id '${msg.id}'")
+            val invalid = dataStr?.let { m_objectMapper.invalidTaskResult(it) }
+            if (invalid != null) publish(invalid)
+            log.error("Discarding invalid message id '${msg.id}' (result published: ${invalid != null})")
             acknowledge(msg.id)
             return
         }
@@ -238,6 +245,8 @@ class RedisTaskWorker(
                             if (running.get()) {
                                 log.error("Error in Redis worker loop: ${e.message}", e)
                                 Thread.sleep(ERROR_BACKOFF_MS)
+                                // Redis was down at boot, or the stream/group was lost (NOGROUP): recreate it.
+                                initConsumerGroup()
                             }
                         }
                     }
@@ -280,6 +289,37 @@ private fun ObjectMapper.parseTask(data: String): TaskEvent? =
         LoggerFactory.getLogger(RedisTaskWorker::class.java).error("Malformed task payload: ${e.message}")
         null
     }
+
+/**
+ * For a readable payload that is not a valid task (unknown `type`, bad field) with a `taskId`: a `FAILED`
+ * result so the consumer is not left waiting. Null when the payload is not JSON or has no `taskId`.
+ */
+private fun ObjectMapper.invalidTaskResult(data: String): TaskResultEvent? {
+    val node =
+        try {
+            readTree(data)
+        } catch (_: JacksonException) {
+            null
+        }
+    val taskId = node
+        ?.get("taskId")
+        ?.takeIf { it.isString }
+        ?.asString()
+        ?.takeIf { it.isNotBlank() } ?: return null
+    val type = node.get("type")?.asString()
+    return TaskResultEvent(
+        taskId = taskId,
+        snippetId = node
+            .get("snippetId")
+            ?.takeIf { it.isString }
+            ?.asString()
+            .orEmpty(),
+        type = TaskType.entries.firstOrNull { it.name == type } ?: TaskType.VALIDATE,
+        status = TaskStatus.FAILED,
+        contentHash = node.get("contentHash")?.takeIf { it.isString }?.asString(),
+        errorMessage = "Tarea inválida: no se pudo interpretar el mensaje (type='$type')",
+    )
+}
 
 /** Number of times Redis has delivered the entry (XPENDING), counting the current delivery. */
 private fun StreamOperations<String, String, String>.deliveryCount(

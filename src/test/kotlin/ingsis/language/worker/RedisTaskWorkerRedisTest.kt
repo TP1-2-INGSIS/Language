@@ -265,11 +265,16 @@ class RedisTaskWorkerRedisTest {
             StreamReadOptions.empty().count(1),
             StreamOffset.create(env.tasks, ReadOffset.lastConsumed()),
         )
-        val survivor = env.worker("survivor", claimIdleMs = 150)
+        val survivor = env.worker("survivor", claimIdleMs = 500)
 
         assertEquals(0, survivor.reclaimIdle(), "an entry that is not idle yet must not be taken")
-        Thread.sleep(Duration.ofMillis(300))
-        assertEquals(1, survivor.reclaimIdle())
+        val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
+        var reclaimed = 0
+        while (reclaimed == 0 && System.nanoTime() < deadline) {
+            reclaimed = survivor.reclaimIdle()
+            if (reclaimed == 0) Thread.sleep(POLL_MS)
+        }
+        assertEquals(1, reclaimed)
 
         val result = env.results().single()
         assertEquals("OK", result["status"].asString())
@@ -292,9 +297,70 @@ class RedisTaskWorkerRedisTest {
         assertTrue(size in 1 until total, "expected a trimmed stream but got $size of $total")
     }
 
+    private fun enqueueRaw(
+        env: Env,
+        data: String,
+    ) {
+        streamOps.add(StreamRecords.string(mapOf("data" to data)).withStreamKey(env.tasks))
+    }
+
+    @Test
+    fun `an entry already past the max deliveries is published as FAILED without processing`() {
+        val processor = Mockito.mock(TaskProcessor::class.java)
+        val env = Env(processor)
+        val worker = env.worker(maxAttempts = 3)
+        env.enqueue(lintTask("let a: number = 1;"))
+        // Delivered to this consumer and re-delivered from its history until the counter exceeds the max.
+        repeat(5) {
+            streamOps.read(
+                Consumer.from(env.group, "worker-1"),
+                StreamReadOptions.empty().count(1),
+                StreamOffset.create(env.tasks, if (it == 0) ReadOffset.lastConsumed() else ReadOffset.from("0")),
+            )
+        }
+
+        worker.pollAndProcess(blockMs = 100)
+
+        val result = env.results().single()
+        assertEquals("FAILED", result["status"].asString())
+        assertTrue(result["attempts"].asInt() > 3)
+        Mockito.verifyNoInteractions(processor)
+        assertEquals(0, env.pendingCount())
+    }
+
+    @Test
+    fun `an unreadable payload is acked without publishing a result`() {
+        val env = Env()
+        val worker = env.worker()
+        enqueueRaw(env, "{ not json")
+
+        worker.pollAndProcess(blockMs = 500)
+
+        assertEquals(0, env.results().size)
+        assertEquals(0, env.pendingCount())
+    }
+
+    @Test
+    fun `a readable but invalid task with a taskId is published as FAILED and acked`() {
+        val env = Env()
+        val worker = env.worker()
+        enqueueRaw(env, """{"taskId":"t-9","snippetId":"s-9","type":"BOGUS","contentHash":"h9"}""")
+
+        worker.pollAndProcess(blockMs = 500)
+
+        val result = env.results().single()
+        assertEquals("FAILED", result["status"].asString())
+        assertEquals("t-9", result["taskId"].asString())
+        assertEquals("s-9", result["snippetId"].asString())
+        assertEquals("h9", result["contentHash"].asString())
+        assertTrue(result["errorMessage"].asString().contains("BOGUS"))
+        assertEquals(0, env.pendingCount())
+    }
+
     private fun anyTask(): TaskEvent = Mockito.any(TaskEvent::class.java) ?: TaskEvent()
 
     private companion object {
         const val REDIS_PORT = 6379
+        const val POLL_MS = 50L
     }
 }

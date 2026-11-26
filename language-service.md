@@ -227,7 +227,7 @@ Con `APP_MODE=worker` (o `all`) el servicio consume el stream `tasks:printscript
 - `TaskEvent`: `taskId`, `snippetId`, `type` (`VALIDATE` | `LINT` | `FORMAT` | `TEST` | `EXECUTE`), `language`, `version`, `content`, `rules` (JSON como string), `inputs`, `expectedOutputs`, `contentHash` (SHA-256 hex, opcional).
 - `TaskResultEvent`: `taskId`, `snippetId`, `type`, `contentHash` (eco), `attempts`, `status`, `success` (`status == OK`), `errors` (`{rule, message, line, column}`), `formattedContent`, `outputs`, `passed`, `errorMessage`.
 - `status`:
-  - `OK`: se procesó. LINT trae las violaciones en `errors` (vacío = compliant), FORMAT trae `formattedContent`, VALIDATE trae `errors` vacío, TEST/EXECUTE traen `outputs`/`passed`. Un error de runtime del programa también es `OK` (con `errors`).
+  - `OK`: se procesó. LINT trae las violaciones en `errors` (vacío = compliant), FORMAT trae `formattedContent`, VALIDATE trae `errors` vacío, TEST/EXECUTE traen `outputs`/`passed`. EXECUTE/TEST: un error lexer, parser o semantic => `INVALID_SOURCE`; un error de runtime del programa => `OK` con `errors`. Ojo: CNC puede detectar errores semánticos en tiempo de ejecución y siempre los reporta en `1:1`, así que también pueden salir como `runtime`.
   - `INVALID_SOURCE`: el código no parsea; `errors` trae los diagnósticos de sintaxis.
   - `FAILED`: error no reintentable (lenguaje o versión no soportados, reglas inválidas), que se publica de inmediato, o intentos agotados. `errorMessage` dice el motivo.
 - Tolerancia a fallos:
@@ -236,7 +236,9 @@ Con `APP_MODE=worker` (o `all`) el servicio consume el stream `tasks:printscript
   - El `XACK` va **después** de publicar el resultado. Si hay una excepción, la entrada queda pendiente y se reintenta.
   - Al llegar a `REDIS_MAX_ATTEMPTS` entregas (contador de XPENDING) publica `FAILED` con la causa y hace el ACK: el mensaje venenoso se saltea.
   - `tasks:results` se recorta con `MAXLEN ~ 10000`.
-  - Un mensaje ilegible (JSON inválido) se descarta con ACK.
+  - Un mensaje con JSON legible pero tarea inválida (`type` desconocido, campo inválido) y con `taskId` publica `FAILED` con `errorMessage` antes del ACK. Si el payload no es JSON o no tiene `taskId`, se descarta con ACK.
+  - `REDIS_CLAIM_IDLE_MS` debe ser mayor que la duración de la tarea más larga: si no, una tarea viva puede reclamarse y procesarse dos veces (inocuo con consumidores idempotentes).
+  - Si el grupo o el stream se pierden (NOGROUP) o Redis estaba caído al arrancar, el loop recrea el grupo en su rama de error.
 - Variables de entorno: ver el README, sección "Variables del worker".
 
 ## 6. Servicios que consume

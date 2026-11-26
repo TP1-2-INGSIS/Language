@@ -119,6 +119,8 @@ Configurable mediante la variable de entorno `APP_MODE`:
 | `REDIS_MAX_ATTEMPTS` | `3` | Entregas antes de publicar `FAILED` y hacer ACK |
 | `REDIS_CLAIM_IDLE_MS` | `60000` | Inactividad a partir de la cual se reclaman entradas de consumers caídos |
 
+Para EXECUTE/TEST: error lexer, parser o semantic => `INVALID_SOURCE`; error de runtime => `OK` con `errors` (CNC puede detectar errores semánticos en runtime y los reporta siempre en `1:1`). `REDIS_CLAIM_IDLE_MS` debe superar la duración de la tarea más larga, o una tarea viva puede reclamarse y procesarse dos veces (inocuo con consumidores idempotentes).
+
 Contrato de mensajes (`TaskEvent` / `TaskResultEvent`, `status` = `OK` | `INVALID_SOURCE` | `FAILED`, `contentHash`, `attempts`) y semántica de reintentos: ver `language-service.md`, sección "Worker asíncrono".
 
 ---
