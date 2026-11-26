@@ -41,6 +41,7 @@ class ExecutionWebSocketHandler(
     @Value("\${ingsis.execution.input-timeout-seconds:60}") private val m_inputTimeoutSeconds: Long,
     @Value("\${ingsis.execution.max-duration-seconds:300}") private val m_maxDurationSeconds: Long,
     @Value("\${ingsis.execution.max-sessions:8}") maxSessions: Int,
+    @Value("\${ingsis.execution.start-timeout-seconds:10}") private val m_startTimeoutSeconds: Long,
 ) : TextWebSocketHandler() {
     private val log = LoggerFactory.getLogger(ExecutionWebSocketHandler::class.java)
     private val sessions = ConcurrentHashMap<String, RunSession>()
@@ -58,7 +59,7 @@ class ExecutionWebSocketHandler(
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
         val decorated = ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, SEND_BUFFER_LIMIT)
-        sessions[session.id] =
+        val run =
             RunSession(
                 decorated,
                 session.uri
@@ -66,6 +67,12 @@ class ExecutionWebSocketHandler(
                     ?.let(::languageOf)
                     .orEmpty(),
             )
+        sessions[session.id] = run
+        watchdog.schedule(
+            { if (!run.started.get()) run.fail("No se recibió start a tiempo", status = CloseStatus.POLICY_VIOLATION) },
+            m_startTimeoutSeconds,
+            TimeUnit.SECONDS,
+        )
     }
 
     override fun handleTextMessage(
@@ -77,13 +84,13 @@ class ExecutionWebSocketHandler(
             try {
                 m_mapper.readTree(message.payload)
             } catch (_: Exception) {
-                return run.fail("Mensaje inválido: se esperaba JSON")
+                return run.fail("Mensaje inválido: se esperaba JSON", status = CloseStatus.POLICY_VIOLATION)
             }
         when (node.path("type").asString("")) {
             "start" -> start(run, node)
-            "input" -> run.inputs.offer(node.path("value").asString(""))
+            "input" -> if (run.awaitingInput) run.inputs.offer(node.path("value").asString(""))
             "stop" -> run.finish(null)
-            else -> run.fail("Tipo de mensaje no soportado")
+            else -> run.fail("Tipo de mensaje no soportado", status = CloseStatus.POLICY_VIOLATION)
         }
     }
 
@@ -105,7 +112,7 @@ class ExecutionWebSocketHandler(
         run: RunSession,
         node: JsonNode,
     ) {
-        if (!run.started.compareAndSet(false, true)) return run.fail("La sesión ya fue iniciada")
+        if (!run.started.compareAndSet(false, true)) return run.fail("La sesión ya fue iniciada", status = CloseStatus.POLICY_VIOLATION)
         val content = node.path("content").asString("")
         val version = node.path("version").asString("")
         val env = node.path("env").properties().associate { it.key to it.value.asString("") }
@@ -115,9 +122,11 @@ class ExecutionWebSocketHandler(
                 is LanguageResult.Failure -> return run.fail(found.error.message)
             }
         try {
-            run.future = pool.submit { execute(run, executor, content, version, env) }
+            val future = pool.submit { execute(run, executor, content, version, env) }
+            run.future = future
+            if (run.isDone()) future.cancel(true)
         } catch (_: RejectedExecutionException) {
-            run.fail("busy")
+            run.fail("busy", status = CloseStatus.SERVER_ERROR)
         }
     }
 
@@ -131,7 +140,7 @@ class ExecutionWebSocketHandler(
         run.thread = Thread.currentThread()
         val watchdog =
             watchdog.schedule(
-                { run.fail("Tiempo máximo de ejecución excedido ($m_maxDurationSeconds s)") },
+                { run.fail("Tiempo máximo de ejecución excedido ($m_maxDurationSeconds s)", status = CloseStatus.SERVER_ERROR) },
                 m_maxDurationSeconds,
                 TimeUnit.SECONDS,
             )
@@ -147,8 +156,9 @@ class ExecutionWebSocketHandler(
             val error = executor.run(content, version, io)
             if (error != null) run.fail(error) else run.finish(mapOf("type" to "finished"))
         } catch (e: Exception) {
-            log.warn("Interactive execution failed", e)
-            run.fail(e.message ?: e.toString())
+            log.warn("Interactive execution failed: {}", e.javaClass.name)
+            log.debug("Interactive execution failure detail", e)
+            run.fail("Error interno de ejecución", status = CloseStatus.SERVER_ERROR)
         } finally {
             watchdog.cancel(false)
             run.thread = null
@@ -160,8 +170,15 @@ class ExecutionWebSocketHandler(
         run: RunSession,
         prompt: String,
     ): String {
-        run.send(mapOf("type" to "input-request", "prompt" to prompt))
-        val value = run.inputs.poll(m_inputTimeoutSeconds, TimeUnit.SECONDS)
+        run.inputs.clear()
+        run.awaitingInput = true
+        val value =
+            try {
+                run.send(mapOf("type" to "input-request", "prompt" to prompt))
+                run.inputs.poll(m_inputTimeoutSeconds, TimeUnit.SECONDS)
+            } finally {
+                run.awaitingInput = false
+            }
         if (value == null) {
             run.fail("Tiempo de espera de input agotado ($m_inputTimeoutSeconds s)")
             error("Tiempo de espera de input agotado")
@@ -182,11 +199,15 @@ class ExecutionWebSocketHandler(
 
         @Volatile var thread: Thread? = null
 
+        @Volatile var awaitingInput = false
+
         @Volatile var future: Future<*>? = null
 
         fun send(payload: Map<String, Any?>) {
             if (socket.isOpen) socket.sendMessage(TextMessage(m_mapper.writeValueAsString(payload)))
         }
+
+        fun isDone(): Boolean = done.get()
 
         fun fail(diagnostic: Diagnostic) = fail(diagnostic.message, diagnostic.line, diagnostic.column)
 
@@ -194,6 +215,7 @@ class ExecutionWebSocketHandler(
             message: String,
             line: Int? = null,
             column: Int? = null,
+            status: CloseStatus = CloseStatus.NORMAL,
         ) = finish(
             buildMap {
                 put("type", "error")
@@ -201,14 +223,18 @@ class ExecutionWebSocketHandler(
                 line?.let { put("line", it) }
                 column?.let { put("column", it) }
             },
+            status,
         )
 
         /** Sends the terminal [message] (if any), closes the socket and stops the execution thread. Idempotent. */
-        fun finish(message: Map<String, Any?>?) {
+        fun finish(
+            message: Map<String, Any?>?,
+            status: CloseStatus = CloseStatus.NORMAL,
+        ) {
             if (!done.compareAndSet(false, true)) return
             try {
                 message?.let(::send)
-                if (socket.isOpen) socket.close(CloseStatus.NORMAL)
+                if (socket.isOpen) socket.close(status)
             } catch (e: Exception) {
                 log.debug("Could not close session cleanly", e)
             }
