@@ -33,12 +33,24 @@ class PrintScriptEngineTest {
 
     @Test
     fun `format delegates to runner`() {
+        Mockito.`when`(runner.validate("code", "1.1")).thenReturn(ValidationReport(true))
         Mockito.`when`(runner.format("code", "1.1", "{}")).thenReturn("formatted code")
 
         val result = engine.format("code", "1.1", "{}")
 
         assertTrue(result.isSuccess)
         assertEquals("formatted code", result.getOrNull())
+    }
+
+    @Test
+    fun `format of invalid code is an InvalidSource failure with the diagnostics and never formats`() {
+        val diagnostics = listOf(Diagnostic("parser", "bad", 1, 1))
+        Mockito.`when`(runner.validate("code", "1.1")).thenReturn(ValidationReport(false, diagnostics))
+
+        val error = engine.format("code", "1.1", "{}").errorOrNull()
+
+        assertEquals(DomainError.InvalidSource("El código fuente no es válido", diagnostics), error)
+        Mockito.verify(runner, Mockito.never()).format("code", "1.1", "{}")
     }
 
     @Test
@@ -65,6 +77,7 @@ class PrintScriptEngineTest {
 
     @Test
     fun `invalid rules become an InvalidRules failure`() {
+        Mockito.`when`(runner.validate("code", "1.1")).thenReturn(ValidationReport(true))
         Mockito.`when`(runner.format("code", "1.1", "[]")).thenThrow(InvalidRulesException("bad"))
         Mockito.`when`(runner.lint("code", "1.1", "[]")).thenThrow(InvalidRulesException("bad"))
 

@@ -2,6 +2,7 @@ package ingsis.language.resources
 
 import ingsis.language.domain.model.DomainError
 import ingsis.language.domain.model.LanguageResult
+import ingsis.language.resources.dtos.DiagnosticResponse
 import ingsis.language.resources.dtos.ErrorResponse
 import org.springframework.http.ResponseEntity
 
@@ -17,7 +18,13 @@ fun DomainError.toResponse(): ResponseEntity<Any> {
 
     return ResponseEntity
         .status(statusCode)
-        .body(ErrorResponse(error = code, message = message))
+        .body(
+            ErrorResponse(
+                error = code,
+                message = message,
+                diagnostics = (this as? DomainError.InvalidSource)?.diagnostics.orEmpty().map(::DiagnosticResponse),
+            ),
+        )
 }
 
 fun <T, R : Any> LanguageResult<T>.toResponse(transform: (T) -> R): ResponseEntity<Any> =

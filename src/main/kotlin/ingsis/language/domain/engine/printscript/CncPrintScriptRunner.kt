@@ -12,6 +12,7 @@ import cnc.token.TokenType
 import ingsis.language.domain.model.Diagnostic
 import ingsis.language.domain.model.ExecutionIO
 import ingsis.language.domain.model.ExecutionReport
+import ingsis.language.domain.model.SYNTAX_RULE
 import ingsis.language.domain.model.ValidationReport
 import cnc.printscript.PrintScriptEngine as CncEngine
 
@@ -136,7 +137,7 @@ internal class LintDiagnostics(
 
     private fun syntax(warning: String): Diagnostic {
         val (line, column) = positionIn(warning)
-        return Diagnostic("syntax", warning.removePrefix(SYNTAX_PREFIX), line, column)
+        return Diagnostic(SYNTAX_RULE, warning.removePrefix(SYNTAX_PREFIX), line, column)
     }
 
     private fun naming(warning: String): Diagnostic {

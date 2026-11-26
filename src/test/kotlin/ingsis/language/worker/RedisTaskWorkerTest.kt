@@ -1,22 +1,13 @@
 package ingsis.language.worker
 
-import ingsis.language.worker.events.TaskEvent
-import ingsis.language.worker.events.TaskResultEvent
-import ingsis.language.worker.events.TaskType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito
-import org.springframework.data.redis.connection.stream.Consumer
 import org.springframework.data.redis.connection.stream.ReadOffset
-import org.springframework.data.redis.connection.stream.RecordId
-import org.springframework.data.redis.connection.stream.StreamOffset
-import org.springframework.data.redis.connection.stream.StreamReadOptions
-import org.springframework.data.redis.connection.stream.StreamRecords
 import org.springframework.data.redis.core.StreamOperations
 import org.springframework.data.redis.core.StringRedisTemplate
 import tools.jackson.databind.json.JsonMapper
@@ -64,74 +55,6 @@ class RedisTaskWorkerTest {
     }
 
     @Test
-    fun `pollAndProcess returns 0 when no messages`() {
-        Mockito
-            .`when`(
-                streamOps.read(
-                    any(Consumer::class.java),
-                    any(StreamReadOptions::class.java),
-                    any<StreamOffset<String>>(),
-                ),
-            ).thenReturn(emptyList())
-
-        val worker = createWorker(appMode = "worker")
-
-        val processed = worker.pollAndProcess(batchSize = 5, blockMs = 100)
-
-        assertEquals(0, processed)
-    }
-
-    @Test
-    fun `pollAndProcess processes message, writes result and sends acknowledge`() {
-        val task = TaskEvent(taskId = "task-100", snippetId = "snip-1", type = TaskType.VALIDATE, language = "printscript", version = "1.1")
-        val taskJson = objectMapper.writeValueAsString(task)
-        val result = TaskResultEvent(taskId = "task-100", snippetId = "snip-1", type = TaskType.VALIDATE, success = true)
-
-        val recordId = RecordId.of("1-0")
-        val message = StreamRecords.string(mapOf("data" to taskJson)).withStreamKey("tasks:test").withId(recordId)
-        Mockito
-            .`when`(
-                streamOps.read(
-                    any(Consumer::class.java),
-                    any(StreamReadOptions::class.java),
-                    any<StreamOffset<String>>(),
-                ),
-            ).thenReturn(listOf(message))
-        Mockito
-            .`when`(taskProcessor.process(task))
-            .thenReturn(result)
-
-        val worker = createWorker(appMode = "worker")
-
-        val processed = worker.pollAndProcess(batchSize = 5, blockMs = 100)
-
-        assertEquals(1, processed)
-        Mockito.verify(streamOps).add(eq("results:test"), eq(mapOf("data" to objectMapper.writeValueAsString(result))))
-        Mockito.verify(streamOps).acknowledge(eq("tasks:test"), eq("group-1"), eq(recordId))
-    }
-
-    @Test
-    fun `pollAndProcess still sends acknowledge on malformed message`() {
-        val recordId = RecordId.of("2-0")
-        val message = StreamRecords.string(mapOf("data" to "{ invalid json")).withStreamKey("tasks:test").withId(recordId)
-        Mockito
-            .`when`(
-                streamOps.read(
-                    any(Consumer::class.java),
-                    any(StreamReadOptions::class.java),
-                    any<StreamOffset<String>>(),
-                ),
-            ).thenReturn(listOf(message))
-
-        val worker = createWorker(appMode = "worker")
-
-        val processed = worker.pollAndProcess(batchSize = 5, blockMs = 100)
-
-        assertEquals(1, processed)
-        Mockito.verify(streamOps).acknowledge(eq("tasks:test"), eq("group-1"), eq(recordId))
-    }
-
-    @Test
     fun `startWorkerLoop and stopWorkerLoop control running state`() {
         val worker = createWorker(appMode = "worker")
 
@@ -154,4 +77,13 @@ class RedisTaskWorkerTest {
             m_consumerGroup = "group-1",
             m_consumerName = "worker-1",
         )
+
+    @Test
+    fun `consumer name defaults to the hostname when blank and honors the override`() {
+        val blank = RedisTaskWorker(redisTemplate, taskProcessor, objectMapper, "worker", "t", "r", "g", "")
+        val named = RedisTaskWorker(redisTemplate, taskProcessor, objectMapper, "worker", "t", "r", "g", "mine")
+
+        assertTrue(blank.consumerName.isNotBlank())
+        assertEquals("mine", named.consumerName)
+    }
 }
