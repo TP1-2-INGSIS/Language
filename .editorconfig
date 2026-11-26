@@ -9,15 +9,14 @@ trim_trailing_whitespace = true
 [*.{kt,kts}]
 indent_style = space
 indent_size = 4
-# CUSTOM 1: 140 columns instead of ktlint's default (off for ktlint_official, 140 only for android-style). Kept in sync with
-# detekt's MaxLineLength.
+# Igual al default de ktlint, explícito (no es una regla propia); en sync con detekt MaxLineLength.
 max_line_length = 140
-# CUSTOM 2: trailing commas are allowed (not mandated) at declaration and call sites.
+# Igual al default, explícito (no es una regla propia).
 ij_kotlin_allow_trailing_comma = true
 ij_kotlin_allow_trailing_comma_on_call_site = true
-# CUSTOM 3: disable two opinionated ktlint_official rules (multiline-expression-wrapping, string-template-indent): they force
-# churn on chained Spring/Redis calls and raw strings without improving readability.
+# CUSTOM 1 (regla propia de ktlint): deshabilitada, ktlint_official la activa por defecto; fuerza reformateos en cadenas Spring/Redis.
 ktlint_standard_multiline-expression-wrapping = disabled
+# CUSTOM 2 (regla propia de ktlint): deshabilitada, activa por defecto; molesta en raw strings sin mejorar la lectura.
 ktlint_standard_string-template-indent = disabled
 
 [*.{yml,yaml,json,md}]
